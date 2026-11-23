@@ -1,0 +1,341 @@
+import React, { useState } from 'react';
+import {
+  AlertTriangle,
+  BatteryCharging,
+  ChevronDown,
+  ChevronUp,
+  Factory,
+  Flashlight,
+  Home,
+  Pause,
+  Volume2,
+  VolumeX,
+  Zap,
+} from 'lucide-react';
+import { getUiText } from '../game/localization';
+import { HudSnapshot } from '../types/game';
+
+interface GameHudProps {
+  hud: HudSnapshot;
+  muted: boolean;
+  onToggleMute: () => void;
+  onToggleFlashlight: () => void;
+  onPause: () => void;
+  onExitToMenu: () => void;
+  onVirtualMove: (dx: number, dz: number) => void;
+  onVirtualJump: () => void;
+  onVirtualSprint: (sprint: boolean) => void;
+}
+
+function formatTime(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+export const GameHud: React.FC<GameHudProps> = ({
+  hud,
+  muted,
+  onToggleMute,
+  onToggleFlashlight,
+  onPause,
+  onExitToMenu,
+  onVirtualMove,
+  onVirtualJump,
+  onVirtualSprint,
+}) => {
+  const [hintsOpen, setHintsOpen] = useState(true);
+  const t = getUiText(hud.settings.language);
+  const isDanger =
+    hud.nearestChaserDist < 11.5 && (hud.ronerSpawned || hud.sashaSpawned);
+  const isFP = hud.mode === 'first_person' || hud.mode === 'story_act1';
+  const storyGoalMet =
+    hud.targetMushrooms !== null && hud.mushrooms >= hud.targetMushrooms;
+
+  return (
+    <div className="pointer-events-none fixed inset-0 z-30 flex flex-col justify-between p-3 sm:p-5">
+      {/* Subtle First-Person Aim Reticle */}
+      {isFP && hud.phase === 'playing' && (
+        <div className="pointer-events-none fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+          <div
+            className={`h-2 w-2 rounded-full border ${
+              hud.flashlightOn
+                ? 'border-amber-200/80 bg-amber-300/60'
+                : 'border-white/40 bg-white/25'
+            }`}
+          />
+        </div>
+      )}
+
+      {/* Top Perimeter Clusters */}
+      <div className="flex items-start justify-between gap-3">
+        {/* Top-Left: Простофиля Mushroom Counter & Story Progress */}
+        <div className="flex items-center gap-3 rounded-xl border border-emerald-500/35 bg-[#0a1319]/92 px-3.5 py-2.5 shadow-lg">
+          <img
+            src="/assets/aistudio/image_690f5407.png"
+            alt={t.mushroomName}
+            className="h-11 w-11 rounded-lg border border-amber-400/50 object-cover shrink-0"
+          />
+          <div>
+            <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider">
+              <span className="text-emerald-300/90">{t.mushroomName}</span>
+              <span
+                className={`rounded px-1.5 py-0.5 text-[10px] font-black ${
+                  hud.mode === 'hardcore_third_person'
+                    ? 'bg-rose-500/25 text-rose-300 border border-rose-400/40'
+                    : hud.mode === 'story_act1'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-400/35'
+                      : 'bg-sky-500/20 text-sky-300 border border-sky-400/35'
+                }`}
+              >
+                {hud.mode === 'hardcore_third_person'
+                  ? t.badgeHardcore
+                  : hud.mode === 'story_act1'
+                    ? t.badgeStory
+                    : t.badgeFP}
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2.5 mt-0.5">
+              <span className="text-2xl font-black tabular-nums text-white leading-none">
+                {hud.mushrooms}
+                {hud.targetMushrooms !== null && (
+                  <span className="text-sm font-bold text-amber-300">
+                    /{hud.targetMushrooms}
+                  </span>
+                )}
+              </span>
+              {hud.distanceToGate !== null ? (
+                <span
+                  className={`flex items-center gap-1 text-xs font-extrabold tabular-nums ${
+                    storyGoalMet ? 'text-emerald-300' : 'text-sky-300'
+                  }`}
+                >
+                  <Factory className="h-3.5 w-3.5" />
+                  {t.factoryShort} {hud.distanceToGate}
+                  {hud.settings.language === 'en' ? 'm' : 'м'}
+                </span>
+              ) : (
+                <span className="text-xs font-semibold tabular-nums text-amber-300/90">
+                  {t.record}: {hud.bestMushrooms}
+                </span>
+              )}
+              <span className="text-xs font-semibold tabular-nums text-slate-300/85 border-l border-white/15 pl-2">
+                {formatTime(hud.elapsedSeconds)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Center Event Banner */}
+        {hud.eventBanner && (
+          <div className="hidden md:flex items-center gap-2 rounded-lg border border-amber-400/50 bg-[#131120]/94 px-4 py-2 text-sm font-extrabold text-amber-200 shadow-lg">
+            <span>{hud.eventBanner}</span>
+          </div>
+        )}
+
+        {/* Top-Right: Stamina + Battery (in Story), Flashlight Toggle, Mute & Pause */}
+        <div className="flex items-center gap-2">
+          <div className="rounded-xl border border-emerald-500/35 bg-[#0a1319]/92 px-3.5 py-2 shadow-lg min-w-[156px]">
+            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider mb-1">
+              <span className="flex items-center gap-1 text-emerald-300">
+                <Zap className="h-3.5 w-3.5 text-yellow-400" />
+                {hud.speedBoostActive ? t.panther : t.stamina}
+              </span>
+              <span className="tabular-nums text-white">{hud.stamina}%</span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-black/60">
+              <div
+                className={`h-full transition-[width] duration-75 ${
+                  hud.speedBoostActive
+                    ? 'bg-yellow-400'
+                    : hud.stamina > 30
+                      ? 'bg-emerald-400'
+                      : 'bg-rose-500'
+                }`}
+                style={{ width: `${hud.stamina}%` }}
+              />
+            </div>
+
+            {hud.hasBatteryLimit && (
+              <div className="mt-2">
+                <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider mb-1">
+                  <span className="flex items-center gap-1 text-sky-300">
+                    <BatteryCharging className="h-3.5 w-3.5 text-amber-300" />
+                    {t.battery}
+                  </span>
+                  <span className="tabular-nums text-white">{hud.battery}%</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-black/60">
+                  <div
+                    className={`h-full transition-[width] duration-75 ${
+                      hud.battery > 25 ? 'bg-sky-400' : 'bg-rose-500'
+                    }`}
+                    style={{ width: `${hud.battery}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {isDanger && (
+              <div className="mt-1.5 flex items-center gap-1 text-[11px] font-extrabold text-rose-400 tabular-nums">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                {t.dangerNearby} {hud.nearestChaserDist}
+                {hud.settings.language === 'en' ? 'm' : 'м'}
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={onToggleFlashlight}
+            aria-label="Flashlight"
+            className={`pointer-events-auto flex h-11 px-3 items-center gap-1.5 rounded-xl border transition-colors cursor-pointer ${
+              hud.flashlightOn
+                ? 'border-amber-400/60 bg-amber-500/20 text-amber-200 hover:bg-amber-500/30'
+                : 'border-white/15 bg-[#0a1319]/92 text-slate-400 hover:bg-[#152430]'
+            }`}
+          >
+            <Flashlight className="h-4 w-4" />
+            <span className="hidden sm:inline text-xs font-extrabold">F</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onToggleMute}
+            aria-label={muted ? t.unmuteLabel : t.muteLabel}
+            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-xl border border-white/15 bg-[#0a1319]/92 text-slate-100 hover:bg-[#152430] transition-colors cursor-pointer"
+          >
+            {muted ? (
+              <VolumeX className="h-5 w-5 text-rose-400" />
+            ) : (
+              <Volume2 className="h-5 w-5 text-emerald-300" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={onPause}
+            aria-label={t.pauseTitle}
+            title="Esc"
+            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-xl border border-white/15 bg-[#0a1319]/92 text-slate-100 hover:bg-[#152430] transition-colors cursor-pointer"
+          >
+            <Pause className="h-5 w-5" />
+          </button>
+
+          <button
+            type="button"
+            onClick={onExitToMenu}
+            aria-label={t.menuBtn}
+            title={t.menuBtn}
+            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-xl border border-white/15 bg-[#0a1319]/92 text-slate-100 hover:bg-[#152430] transition-colors cursor-pointer"
+          >
+            <Home className="h-5 w-5 text-amber-300" />
+          </button>
+        </div>
+      </div>
+
+      {/* Caught Dramatic Screen Vignette */}
+      {hud.phase === 'caught' && (
+        <div className="pointer-events-none fixed inset-0 border-[10px] border-red-600/80 bg-red-900/20" />
+      )}
+
+      {/* Bottom Controls Dock & Mobile Touch Controls */}
+      <div className="flex items-end justify-between gap-3">
+        <div className="pointer-events-auto flex sm:hidden items-center gap-1.5 bg-[#0a1319]/90 p-2 rounded-2xl border border-white/15">
+          <div className="grid grid-cols-3 gap-1 w-28 h-28">
+            <div />
+            <button
+              type="button"
+              onPointerDown={() => onVirtualMove(0, -1)}
+              onPointerUp={() => onVirtualMove(0, 0)}
+              onPointerLeave={() => onVirtualMove(0, 0)}
+              className="rounded-lg bg-white/10 active:bg-emerald-500/40 font-black text-white"
+            >
+              ▲
+            </button>
+            <div />
+            <button
+              type="button"
+              onPointerDown={() => onVirtualMove(-1, 0)}
+              onPointerUp={() => onVirtualMove(0, 0)}
+              onPointerLeave={() => onVirtualMove(0, 0)}
+              className="rounded-lg bg-white/10 active:bg-emerald-500/40 font-black text-white"
+            >
+              ◀
+            </button>
+            <div />
+            <button
+              type="button"
+              onPointerDown={() => onVirtualMove(1, 0)}
+              onPointerUp={() => onVirtualMove(0, 0)}
+              onPointerLeave={() => onVirtualMove(0, 0)}
+              className="rounded-lg bg-white/10 active:bg-emerald-500/40 font-black text-white"
+            >
+              ▶
+            </button>
+            <div />
+            <button
+              type="button"
+              onPointerDown={() => onVirtualMove(0, 1)}
+              onPointerUp={() => onVirtualMove(0, 0)}
+              onPointerLeave={() => onVirtualMove(0, 0)}
+              className="rounded-lg bg-white/10 active:bg-emerald-500/40 font-black text-white"
+            >
+              ▼
+            </button>
+            <div />
+          </div>
+        </div>
+
+        <div className="hidden sm:flex flex-col items-center mx-auto">
+          <button
+            type="button"
+            onClick={() => setHintsOpen((v) => !v)}
+            className="pointer-events-auto mb-1 flex items-center gap-1 rounded-t-lg border border-b-0 border-white/15 bg-[#0a1319]/90 px-2.5 py-0.5 text-[11px] font-semibold text-slate-300 hover:text-white cursor-pointer"
+          >
+            {hintsOpen ? (
+              <>
+                <ChevronDown className="h-3 w-3" /> {t.hideControls}
+              </>
+            ) : (
+              <>
+                <ChevronUp className="h-3 w-3" /> {t.showControls}
+              </>
+            )}
+          </button>
+          {hintsOpen && (
+            <div className="rounded-xl border border-white/15 bg-[#0a1319]/92 px-4 py-1.5 text-xs font-medium text-slate-200 shadow-lg">
+              {t.controlsHud}
+            </div>
+          )}
+        </div>
+
+        <div className="pointer-events-auto flex sm:hidden flex-col gap-2">
+          <button
+            type="button"
+            onPointerDown={onToggleFlashlight}
+            className="rounded-xl border border-amber-300/45 bg-amber-500/25 px-4 py-2.5 text-xs font-black text-amber-100"
+          >
+            {t.touchLight}
+          </button>
+          <button
+            type="button"
+            onPointerDown={() => onVirtualSprint(true)}
+            onPointerUp={() => onVirtualSprint(false)}
+            onPointerLeave={() => onVirtualSprint(false)}
+            className="rounded-xl border border-sky-400/40 bg-sky-500/25 px-4 py-2.5 text-xs font-black text-sky-100 active:bg-sky-500/50"
+          >
+            {t.touchSprint}
+          </button>
+          <button
+            type="button"
+            onPointerDown={onVirtualJump}
+            className="rounded-xl border border-emerald-400/40 bg-emerald-500/25 px-4 py-2.5 text-xs font-black text-emerald-100 active:bg-emerald-500/50"
+          >
+            {t.touchJump}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};

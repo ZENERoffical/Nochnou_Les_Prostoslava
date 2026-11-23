@@ -1,0 +1,6 @@
+{
+  "name": "Лесной Забег: Простофиля",
+  "description": "3D-выживание в лесу за nikitys6666: собирай грибы Простофиля и убегай от RONER_552 и sasha55k_XL!",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
