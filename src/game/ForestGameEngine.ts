@@ -3,6 +3,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { GameAudio } from './audio';
 import {
   animateRobloxCharacter,
+  animateRobloxSeated,
   createBatteryProp,
   createFlashlightProp,
   createGateProp,
@@ -59,6 +60,7 @@ import {
   getCutsceneLine,
   getKrysaRetreatLine,
   getStandardChaserPhrases,
+  getUiText,
   loadSettings,
   pickRandomChaserPhrase,
   saveSettings,
@@ -83,6 +85,18 @@ import {
   createAct3MetalMesh,
 } from './act3Park';
 import {
+  ACT4_ARENA_HALF_W,
+  ACT4_HOUSE_POS,
+  ACT4_RONER_POS,
+  ACT4_SASHA_POS,
+  ACT4_START_Z,
+  ACT4_TABLE_POS,
+  Act4VillageObjects,
+  Act4WeaponViewModels,
+  buildAct4VillageScene,
+  createAct4WeaponsViewModel,
+} from './act4Village';
+import {
   evaluateStatAchievements,
   loadAchievements,
   unlockSingleAchievement,
@@ -90,6 +104,7 @@ import {
 import {
   AchievementId,
   AchievementProgressState,
+  Act4WeaponId,
   ChaserId,
   CutsceneSubtitle,
   FloatingPickupText,
@@ -115,6 +130,24 @@ const ACT3_LV4_METAL_COST = 8;
 const ACT3_LV5_METAL_COST = 10;
 const ACT3_LV6_METAL_COST = 12;
 const ACT3_BOSS_MAX_HP = 14;
+const ACT4_WAVE_COUNTS = [5, 10, 20, 40, 60, 67, 1];
+const ACT4_BOSS_MAX_HP = 11488;
+const ACT4_WEAPON_ORDER: Act4WeaponId[] = [
+  'pistol',
+  'uzi',
+  'ak47',
+  'sniper',
+  'rpg',
+  'flamethrower',
+];
+const ACT4_WEAPON_THRESHOLDS: Record<Act4WeaponId, number> = {
+  pistol: 0,
+  uzi: 10,
+  ak47: 20,
+  sniper: 30,
+  rpg: 40,
+  flamethrower: 50,
+};
 
 const SEASONING_BOX_SPOTS: Array<{ x: number; z: number }> = [
   // Central Hall starter box
@@ -148,7 +181,8 @@ type ActiveWorldType =
   | 'factory'
   | 'sniper_arena'
   | 'malinka_city'
-  | 'act3_park';
+  | 'act3_park'
+  | 'act4_village';
 
 // Pre-allocated math helpers for zero-GC per-frame loop
 const _vec3 = new THREE.Vector3();
@@ -252,6 +286,22 @@ interface ParkCollectible {
   phase: number;
 }
 
+interface Act4CloneEntity {
+  name: string;
+  rig: RobloxRig;
+  x: number;
+  z: number;
+  yaw: number;
+  active: boolean;
+  hp: number;
+  maxHp: number;
+  deadTimer: number;
+  speed: number;
+  tauntTimer: number;
+  currentBubbleText: string | null;
+  bubbleTimer: number;
+}
+
 export interface EngineCallbacks {
   onHudUpdate: (hud: HudSnapshot) => void;
   onBubblesUpdate: (bubbles: SpeechBubbleState[]) => void;
@@ -290,6 +340,7 @@ export class ForestGameEngine {
   private sniperArenaObjs: SniperArenaObjects | null = null;
   private malinkaObjs: MalinkaCityObjects | null = null;
   private act3ParkObjs: Act3ParkObjects | null = null;
+  private act4VillageObjs: Act4VillageObjects | null = null;
   private activeWorldType: ActiveWorldType = 'story_forest';
   private memeTexture: THREE.Texture | null = null;
 
@@ -385,6 +436,38 @@ export class ForestGameEngine {
     { flank: 'right', lightExposure: 0, retreatTimer: 0, respawnTimer: 2.0 },
     { flank: 'left', lightExposure: 0, retreatTimer: 0, respawnTimer: 3.2 },
   ];
+
+  // Act 4 «JoJo» Village Defense State
+  private act4FpWeapons: Act4WeaponViewModels;
+  private act4Clones: Act4CloneEntity[] = [];
+  private act4Stage: 'walk_to_house' | 'battle' = 'walk_to_house';
+  private act4Kills = 0;
+  private act4Wave = 1;
+  private act4WaveToSpawn = 0;
+  private act4WaveSpawnTimer = 0;
+  private act4WaveClearedPause = 0;
+  private act4ActiveWeapon: Act4WeaponId = 'pistol';
+  private act4UnlockedWeapons: Act4WeaponId[] = ['pistol'];
+  private act4HasTurrets = false;
+  private act4BossHp = 0;
+  private act4BossRoarTimer = 0;
+  private act4Hp = 5;
+  private readonly act4MaxHp = 5;
+  private act4InvulnTimer = 0;
+  private act4FireCooldown = 0;
+  private act4WeaponRecoil = 0;
+  private act4MuzzleTimer = 0;
+  private act4FlameTimer = 0;
+  private act4FlameAudioTimer = 0;
+  private act4ExplosionTimer = 0;
+  private act4RocketActive = false;
+  private act4RocketPos = new THREE.Vector3();
+  private act4RocketDir = new THREE.Vector3();
+  private act4RocketLife = 0;
+  private isPrimaryFireHeld = false;
+  private act4NearShop: 'sasha' | 'roner' | null = null;
+  private act4GiornoText: string | null = null;
+  private act4UziSecretTriggered = false;
 
   // Act 2 Horror AI (Rare & Mutually Exclusive: Blindfolded Sanya + Window-Breaching RONER)
   private sanyaState: 'dormant' | 'flicker_warning' | 'hunting' | 'leaving' = 'dormant';
@@ -611,6 +694,11 @@ export class ForestGameEngine {
     this.fpSniper.group.visible = false;
     this.scene.add(this.fpSniper.group);
 
+    // 1st-person multi-weapon viewmodel for Act 4 «JoJo» Village
+    this.act4FpWeapons = createAct4WeaponsViewModel();
+    this.act4FpWeapons.group.visible = false;
+    this.scene.add(this.act4FpWeapons.group);
+
     this.tpFlashlight = createFlashlightProp(false);
     this.tpFlashlight.group.position.set(0, -0.76, 0.04);
     this.tpFlashlight.group.rotation.x = -Math.PI / 2;
@@ -741,6 +829,29 @@ export class ForestGameEngine {
         speed: 4.8 + (i % 3) * 0.35,
         pitch: 0.95 + (i % 3) * 0.04,
         tauntTimer: 1.5 + i * 0.7,
+        currentBubbleText: null,
+        bubbleTimer: 0,
+      });
+    }
+
+    // Pre-allocated pool of 26 RONER clones for Act 4 «JoJo» Village waves (5..67)
+    for (let i = 0; i < 26; i++) {
+      const rig = createRoner552(this.anisotropy);
+      if (rig.angryBrows) rig.angryBrows.visible = true;
+      rig.root.visible = false;
+      this.scene.add(rig.root);
+      this.act4Clones.push({
+        name: `Клон RONER #${i + 1}`,
+        rig,
+        x: 0,
+        z: -28,
+        yaw: 0,
+        active: false,
+        hp: 65,
+        maxHp: 65,
+        deadTimer: 0,
+        speed: 4.6 + (i % 4) * 0.32,
+        tauntTimer: 1.2 + i * 0.45,
         currentBubbleText: null,
         bubbleTimer: 0,
       });
@@ -900,6 +1011,15 @@ export class ForestGameEngine {
         this.disposeObjectResources(this.act3ParkObjs.worldGroup);
         this.act3ParkObjs = null;
       }
+    } else if (this.activeWorldType === 'act4_village') {
+      if (this.act4VillageObjs) {
+        this.scene.remove(this.act4VillageObjs.worldGroup);
+        for (const d of this.act4VillageObjs.disposables) {
+          d.dispose();
+        }
+        this.disposeObjectResources(this.act4VillageObjs.worldGroup);
+        this.act4VillageObjs = null;
+      }
     } else {
       this.clearMushrooms();
       this.clearBatteries();
@@ -957,6 +1077,17 @@ export class ForestGameEngine {
         this.anisotropy,
         this.isSoftwareGl
       );
+    } else if (targetWorld === 'act4_village') {
+      const villageBg = 0x151128;
+      this.scene.background = new THREE.Color(villageBg);
+      this.fog.color.setHex(villageBg);
+      this.fog.density = 0.011;
+      this.moonLight.intensity = 0.82;
+      this.act4VillageObjs = buildAct4VillageScene(
+        this.scene,
+        this.anisotropy,
+        this.isSoftwareGl
+      );
     } else {
       const nightHorizon = 0x071018;
       this.scene.background = new THREE.Color(nightHorizon);
@@ -984,21 +1115,26 @@ export class ForestGameEngine {
 
   private ensureWorldForMode(mode: GameMode): void {
     const targetWorld: ActiveWorldType =
-      mode === 'story_act3'
-        ? 'act3_park'
-        : mode === 'story_act2' || mode === 'fnaf_epta'
-          ? 'factory'
-          : mode === 'sniper_minigame'
-            ? 'sniper_arena'
-            : mode === 'story_act1'
-              ? 'story_forest'
-              : 'arena_forest';
+      mode === 'story_act4'
+        ? 'act4_village'
+        : mode === 'story_act3'
+          ? 'act3_park'
+          : mode === 'story_act2' || mode === 'fnaf_epta'
+            ? 'factory'
+            : mode === 'sniper_minigame'
+              ? 'sniper_arena'
+              : mode === 'story_act1'
+                ? 'story_forest'
+                : 'arena_forest';
     this.setActiveWorld(targetWorld, mode === 'hardcore_third_person');
   }
 
   public setMode(mode: GameMode): void {
     this.mode = mode;
-    if (mode === 'story_act3') {
+    if (mode === 'story_act4') {
+      this.fog.density = 0.011;
+      this.camera.fov = 72;
+    } else if (mode === 'story_act3') {
       this.fog.density = 0.014;
       this.camera.fov = 72;
     } else if (mode === 'story_act2' || mode === 'fnaf_epta') {
@@ -1117,6 +1253,42 @@ export class ForestGameEngine {
         text: line.display,
         tone: isArmy ? 'enemy' : 'nikita',
       };
+    } else if (this.phase === 'act4_intro_cutscene') {
+      const key =
+        this.cutsceneStage <= 0
+          ? 'act4_intro_0'
+          : this.cutsceneStage === 1
+            ? 'act4_intro_1'
+            : this.cutsceneStage === 2
+              ? 'act4_intro_2'
+              : this.cutsceneStage === 3
+                ? 'act4_intro_3'
+                : 'act4_intro_4';
+      const line = getCutsceneLine(key, normalized);
+      const isGiorno = this.cutsceneStage === 1 || this.cutsceneStage === 3;
+      const isClone = this.cutsceneStage === 4;
+      this.cutsceneSubtitle = {
+        speaker: isGiorno
+          ? isEn
+            ? 'Giorno Giovanna'
+            : 'Джорно Джавано'
+          : isClone
+            ? isEn
+              ? 'RONER Clones'
+              : 'Клоны RONER'
+            : isEn
+              ? 'nikitys6666 (Nikita)'
+              : 'nikitys6666 (Никита)',
+        text: line.display,
+        tone: isGiorno || isClone ? 'enemy' : 'nikita',
+      };
+    } else if (this.phase === 'act4_outro_cutscene') {
+      const line = getCutsceneLine('act4_outro_0', normalized);
+      this.cutsceneSubtitle = {
+        speaker: isEn ? 'Nikita, Sasha & Roner' : 'Никита, Саша и Roner',
+        text: line.display,
+        tone: 'nikita',
+      };
     }
 
     this.pushHud(true);
@@ -1125,19 +1297,29 @@ export class ForestGameEngine {
   private syncAct2EnemyAppearance(): void {
     const isFactoryMode = this.mode === 'story_act2' || this.mode === 'fnaf_epta';
     const isAct3 = this.mode === 'story_act3';
+    const isAct4 = this.mode === 'story_act4';
     const roner = this.chasers[0];
     const sasha = this.chasers[1];
     if (roner?.rig.angryBrows) {
-      roner.rig.angryBrows.visible = isFactoryMode || isAct3;
+      roner.rig.angryBrows.visible = isFactoryMode || isAct3 || isAct4;
     }
     if (sasha?.rig.angryBrows) {
-      sasha.rig.angryBrows.visible = isFactoryMode || isAct3;
+      sasha.rig.angryBrows.visible = isFactoryMode || isAct3 || isAct4;
     }
     if (sasha?.rig.blindfold) {
       sasha.rig.blindfold.visible = isFactoryMode;
     }
+    if (sasha?.rig.visor) {
+      const bossActive = isAct4 && this.act4Stage === 'battle' && this.act4Wave === 7 && this.phase === 'playing';
+      sasha.rig.visor.visible = isAct4 && !bossActive;
+    }
+    if (sasha?.rig.lightningEyes) {
+      const bossActive = isAct4 && this.act4Stage === 'battle' && this.act4Wave === 7 && this.phase === 'playing';
+      sasha.rig.lightningEyes.visible = bossActive;
+    }
     if (sasha) {
-      sasha.rig.root.scale.setScalar(isAct3 ? 2.0 : 1.0);
+      const bossActive = isAct4 && this.act4Stage === 'battle' && this.act4Wave === 7 && this.phase === 'playing';
+      sasha.rig.root.scale.setScalar(bossActive ? 3.0 : isAct3 ? 2.0 : 1.0);
     }
   }
 
@@ -1180,6 +1362,11 @@ export class ForestGameEngine {
     this.sachetHand.group.visible = false;
     this.fpSniper.group.visible = false;
     this.fpSniper.muzzleFlash.visible = false;
+    this.act4FpWeapons.group.visible = false;
+    this.act4FpWeapons.muzzleFlash.visible = false;
+    this.act4FpWeapons.flameJet.visible = false;
+    this.act4GiornoText = null;
+    this.isPrimaryFireHeld = false;
     this.nikitaSniperRifle.visible = false;
     this.sniperShotFired = false;
     this.sniperInvulnTimer = 0;
@@ -1216,6 +1403,8 @@ export class ForestGameEngine {
       c.rig.bodyPivot.position.y = 0;
       c.rig.leftArm.rotation.x = 0;
       c.rig.rightArm.rotation.x = 0;
+      c.rig.leftLeg.rotation.x = 0;
+      c.rig.rightLeg.rotation.x = 0;
     }
 
     for (const sc of this.sniperClones) {
@@ -1223,6 +1412,12 @@ export class ForestGameEngine {
       sc.rig.root.visible = false;
       sc.currentBubbleText = null;
       sc.bubbleTimer = 0;
+    }
+    for (const c4 of this.act4Clones) {
+      c4.active = false;
+      c4.rig.root.visible = false;
+      c4.currentBubbleText = null;
+      c4.bubbleTimer = 0;
     }
 
     this.ensureWorldForMode(this.mode);
@@ -1249,6 +1444,10 @@ export class ForestGameEngine {
     this.sachetHand.group.visible = false;
     this.fpSniper.group.visible = false;
     this.fpSniper.muzzleFlash.visible = false;
+    this.act4FpWeapons.group.visible = false;
+    this.act4FpWeapons.muzzleFlash.visible = false;
+    this.act4FpWeapons.flameJet.visible = false;
+    this.act4GiornoText = null;
     this.nikitaSniperRifle.visible = false;
     this.tpFlashlight.group.visible = true;
     for (const sc of this.sniperClones) {
@@ -1260,6 +1459,55 @@ export class ForestGameEngine {
       rc.active = false;
       rc.rig.root.visible = false;
       rc.currentBubbleText = null;
+    }
+    for (const c4 of this.act4Clones) {
+      c4.active = false;
+      c4.rig.root.visible = false;
+      c4.currentBubbleText = null;
+    }
+
+    if (this.mode === 'story_act4' && this.act4VillageObjs) {
+      this.fog.density = 0.011;
+      this.playerX = 0;
+      this.playerZ = -6.0;
+      this.playerY = 0;
+      this.playerYaw = 0.25;
+      this.playerRig.root.visible = true;
+      this.playerRig.root.position.set(this.playerX, 0, this.playerZ);
+      this.playerRig.root.rotation.y = this.playerYaw;
+      this.playerRig.bodyPivot.rotation.x = 0;
+      this.playerRig.bodyPivot.position.y = 0;
+      this.playerRig.leftLeg.rotation.x = 0;
+      this.playerRig.rightLeg.rotation.x = 0;
+      this.tpFlashlight.group.visible = false;
+
+      this.act4VillageObjs.giornoGroup.visible = true;
+      this.act4VillageObjs.giornoGroup.position.set(2.4, 0, -4.5);
+      this.act4VillageObjs.tableGroup.visible = false;
+      this.act4VillageObjs.rocketMesh.visible = false;
+      this.act4VillageObjs.explosionSphere.visible = false;
+      this.act4VillageObjs.explosionLight.intensity = 0;
+      for (const tr of this.act4VillageObjs.turrets) {
+        tr.group.visible = true;
+        tr.tracer.visible = false;
+        tr.muzzleFlash.visible = false;
+      }
+
+      this.syncAct2EnemyAppearance();
+      this.chasers[0].active = true;
+      this.chasers[0].x = ACT4_RONER_POS.x;
+      this.chasers[0].z = ACT4_RONER_POS.z;
+      this.chasers[0].rig.root.visible = true;
+      this.chasers[0].rig.root.position.set(ACT4_RONER_POS.x, 0, ACT4_RONER_POS.z);
+      this.chasers[0].rig.root.rotation.y = -0.3;
+
+      this.chasers[1].active = true;
+      this.chasers[1].x = ACT4_SASHA_POS.x;
+      this.chasers[1].z = ACT4_SASHA_POS.z;
+      this.chasers[1].rig.root.visible = true;
+      this.chasers[1].rig.root.position.set(ACT4_SASHA_POS.x, 0, ACT4_SASHA_POS.z);
+      this.chasers[1].rig.root.rotation.y = 0.3;
+      return;
     }
 
     if (this.mode === 'story_act3' && this.act3ParkObjs) {
@@ -1458,7 +1706,10 @@ export class ForestGameEngine {
   public startGame(selectedMode?: GameMode): void {
     const activeMode = selectedMode ?? this.mode;
     this.mode = activeMode;
-    if (activeMode === 'story_act3') {
+    if (activeMode === 'story_act4') {
+      this.fog.density = 0.011;
+      this.camera.fov = 72;
+    } else if (activeMode === 'story_act3') {
       this.fog.density = 0.014;
       this.camera.fov = 72;
     } else if (activeMode === 'story_act2' || activeMode === 'fnaf_epta') {
@@ -1492,6 +1743,7 @@ export class ForestGameEngine {
     this.interactPrompt = null;
     this.floatingTexts = [];
     this.heldKeys.clear();
+    this.isPrimaryFireHeld = false;
 
     if (activeMode === 'story_act1') {
       this.beginIntroCutscene();
@@ -1505,6 +1757,11 @@ export class ForestGameEngine {
 
     if (activeMode === 'story_act3') {
       this.startAct3IntroCutscene();
+      return;
+    }
+
+    if (activeMode === 'story_act4') {
+      this.startAct4IntroCutscene();
       return;
     }
 
@@ -1588,6 +1845,10 @@ export class ForestGameEngine {
       this.beginAct3Playing();
     } else if (this.phase === 'act3_outro_cutscene') {
       this.finishAct3Victory();
+    } else if (this.phase === 'act4_intro_cutscene') {
+      this.beginAct4Playing();
+    } else if (this.phase === 'act4_outro_cutscene') {
+      this.finishAct4Victory();
     } else if (this.phase === 'act3_secret') {
       this.returnToMenu();
     }
@@ -3218,10 +3479,13 @@ export class ForestGameEngine {
     const isFactoryMode = this.mode === 'story_act2' || this.mode === 'fnaf_epta';
     const isSniperMode = this.mode === 'sniper_minigame';
     const isAct3Sniper = this.mode === 'story_act3' && this.act3HasSniper && this.phase === 'playing';
+    const isAct4 = this.mode === 'story_act4';
+    const isAct4Battle = isAct4 && this.act4Stage === 'battle' && this.phase === 'playing';
     const isFP =
       this.mode === 'first_person' ||
       this.mode === 'story_act1' ||
       this.mode === 'story_act3' ||
+      isAct4 ||
       isFactoryMode ||
       isSniperMode;
     const isPlaying = this.phase === 'playing';
@@ -3229,7 +3493,9 @@ export class ForestGameEngine {
     if (
       this.phase === 'act3_secret' ||
       this.phase === 'act3_intro_cutscene' ||
-      this.phase === 'act3_outro_cutscene'
+      this.phase === 'act3_outro_cutscene' ||
+      this.phase === 'act4_intro_cutscene' ||
+      this.phase === 'act4_outro_cutscene'
     ) {
       this.flashlightSpot.visible = false;
       this.fpFlashlight.group.visible = false;
@@ -3237,13 +3503,19 @@ export class ForestGameEngine {
       this.sachetHand.group.visible = false;
       this.fpSniper.group.visible = false;
       this.fpSniper.muzzleFlash.visible = false;
+      this.act4FpWeapons.group.visible = false;
+      this.act4FpWeapons.muzzleFlash.visible = false;
+      this.act4FpWeapons.flameJet.visible = false;
       return;
     }
 
     if (this.phase === 'title') {
       this.fpSniper.group.visible = false;
       this.fpSniper.muzzleFlash.visible = false;
-      if (isSniperMode || this.mode === 'story_act3') {
+      this.act4FpWeapons.group.visible = false;
+      this.act4FpWeapons.muzzleFlash.visible = false;
+      this.act4FpWeapons.flameJet.visible = false;
+      if (isSniperMode || this.mode === 'story_act3' || isAct4) {
         this.flashlightSpot.visible = true;
         this.flashlightSpot.intensity = 22;
         this.flashlightSpot.position.set(0, 8, 6);
@@ -3270,6 +3542,7 @@ export class ForestGameEngine {
 
     if (this.phase === 'intro_cutscene') {
       this.fpSniper.group.visible = false;
+      this.act4FpWeapons.group.visible = false;
       const flashOn = this.cutsceneStage >= 2;
       this.flashlightSpot.visible = flashOn;
       this.flashlightSpot.intensity = flashOn ? 75 : 0;
@@ -3282,6 +3555,7 @@ export class ForestGameEngine {
 
     if (this.phase === 'act2_intro_cutscene') {
       this.fpSniper.group.visible = false;
+      this.act4FpWeapons.group.visible = false;
       const flashOn = this.cutsceneStage >= 5;
       this.flashlightSpot.visible = flashOn;
       this.flashlightSpot.intensity = flashOn ? 78 : 0;
@@ -3291,6 +3565,52 @@ export class ForestGameEngine {
       this.flashlightTarget.position.set(7.2, 2.2, FACTORY_HALF_D + 0.8);
       return;
     }
+
+    if (isAct4Battle) {
+      this.fpFlashlight.group.visible = false;
+      this.tpFlashlight.group.visible = false;
+      this.sachetHand.group.visible = false;
+      this.fpSniper.group.visible = false;
+      this.fpSniper.muzzleFlash.visible = false;
+
+      const swayX = hasMove
+        ? Math.sin(elapsed * 9) * 0.015
+        : Math.sin(elapsed * 1.8) * 0.004;
+      const swayY = hasMove
+        ? Math.abs(Math.cos(elapsed * 9)) * 0.014
+        : Math.cos(elapsed * 1.6) * 0.004;
+      const kick = this.act4WeaponRecoil;
+      _vec3.set(0.28 + swayX, -0.24 - swayY + kick * 0.032, -0.46 + kick * 0.11);
+      _vec3.applyQuaternion(this.camera.quaternion);
+      this.act4FpWeapons.group.visible = true;
+      this.act4FpWeapons.group.position.copy(this.camera.position).add(_vec3);
+      this.act4FpWeapons.group.quaternion.copy(this.camera.quaternion);
+      this.act4FpWeapons.group.rotateY(0.03);
+      this.act4FpWeapons.group.rotateX(kick * 0.14);
+
+      for (const wKey of ACT4_WEAPON_ORDER) {
+        this.act4FpWeapons.models[wKey].visible = wKey === this.act4ActiveWeapon;
+      }
+      this.act4FpWeapons.muzzleFlash.visible = this.act4MuzzleTimer > 0;
+      this.act4FpWeapons.flameJet.visible =
+        this.act4ActiveWeapon === 'flamethrower' && this.act4FlameTimer > 0;
+      if (this.act4FpWeapons.flameJet.visible) {
+        const pulse = 0.88 + Math.sin(elapsed * 42) * 0.18;
+        this.act4FpWeapons.flameJet.scale.set(pulse, pulse, 0.92 + Math.cos(elapsed * 36) * 0.16);
+      }
+
+      this.flashlightSpot.visible = this.flashlightOn;
+      this.flashlightSpot.intensity = 42;
+      this.camera.getWorldDirection(_beamDir);
+      _beamOrigin.copy(this.camera.position).addScaledVector(_beamDir, 0.3);
+      this.flashlightSpot.position.copy(_beamOrigin);
+      this.flashlightTarget.position.copy(_beamOrigin).addScaledVector(_beamDir, 18);
+      return;
+    }
+
+    this.act4FpWeapons.group.visible = false;
+    this.act4FpWeapons.muzzleFlash.visible = false;
+    this.act4FpWeapons.flameJet.visible = false;
 
     if ((isSniperMode || isAct3Sniper) && isPlaying) {
       this.fpFlashlight.group.visible = false;
@@ -4531,6 +4851,11 @@ export class ForestGameEngine {
 
     if (this.mode === 'story_act3') {
       this.updateAct3Playing(dt, elapsed);
+      return;
+    }
+
+    if (this.mode === 'story_act4') {
+      this.updateAct4Playing(dt, elapsed);
       return;
     }
 
@@ -6560,6 +6885,1332 @@ export class ForestGameEngine {
     this.pushHud(true);
   }
 
+  private resolveAct4VillageCollision(
+    x: number,
+    z: number,
+    radius: number
+  ): { x: number; z: number } {
+    let nx = THREE.MathUtils.clamp(x, -ACT4_ARENA_HALF_W + radius, ACT4_ARENA_HALF_W - radius);
+    let nz = THREE.MathUtils.clamp(z, -ACT4_ARENA_HALF_W + radius, ACT4_ARENA_HALF_W - radius);
+    if (this.act4VillageObjs) {
+      for (const box of this.act4VillageObjs.boxColliders) {
+        const dx = nx - box.x;
+        const dz = nz - box.z;
+        const limX = box.halfW + radius;
+        const limZ = box.halfD + radius;
+        if (Math.abs(dx) < limX && Math.abs(dz) < limZ) {
+          const ovX = limX - Math.abs(dx);
+          const ovZ = limZ - Math.abs(dz);
+          if (ovX < ovZ) {
+            nx += dx >= 0 ? ovX : -ovX;
+          } else {
+            nz += dz >= 0 ? ovZ : -ovZ;
+          }
+        }
+      }
+      for (const tree of this.act4VillageObjs.treeColliders) {
+        const dx = nx - tree.x;
+        const dz = nz - tree.z;
+        const dist = Math.hypot(dx, dz);
+        const minD = tree.radius + radius;
+        if (dist < minD && dist > 0.0001) {
+          const push = (minD - dist) / dist;
+          nx += dx * push;
+          nz += dz * push;
+        }
+      }
+    }
+    return { x: nx, z: nz };
+  }
+
+  private startAct4IntroCutscene(): void {
+    this.phase = 'act4_intro_cutscene';
+    this.cutsceneTimer = 0;
+    this.cutsceneStage = -1;
+    this.elapsedPlaying = 0;
+    this.act4Stage = 'walk_to_house';
+    this.act4Kills = 0;
+    this.act4Wave = 1;
+    this.act4WaveToSpawn = 0;
+    this.act4WaveSpawnTimer = 0;
+    this.act4WaveClearedPause = 0;
+    this.act4ActiveWeapon = 'pistol';
+    this.act4UnlockedWeapons = ['pistol'];
+    this.act4HasTurrets = false;
+    this.act4BossHp = 0;
+    this.act4BossRoarTimer = 0;
+    this.act4Hp = this.act4MaxHp;
+    this.act4InvulnTimer = 0;
+    this.act4FireCooldown = 0;
+    this.act4WeaponRecoil = 0;
+    this.act4MuzzleTimer = 0;
+    this.act4FlameTimer = 0;
+    this.act4FlameAudioTimer = 0;
+    this.act4ExplosionTimer = 0;
+    this.act4RocketActive = false;
+    this.act4NearShop = null;
+    this.act4GiornoText = null;
+    this.act4UziSecretTriggered = false;
+    this.isPrimaryFireHeld = false;
+    this.flashlightOn = true;
+    this.fog.density = 0.011;
+
+    this.playerX = 0;
+    this.playerZ = 14.0;
+    this.playerY = 0;
+    this.playerVy = 0;
+    this.isGrounded = true;
+    this.playerYaw = Math.PI;
+    this.playerRig.root.visible = true;
+    this.playerRig.root.position.set(this.playerX, 0, this.playerZ);
+    this.playerRig.root.rotation.y = this.playerYaw;
+    this.playerRig.bodyPivot.rotation.x = 0;
+    this.playerRig.bodyPivot.position.y = 0;
+    this.tpFlashlight.group.visible = false;
+    this.fpFlashlight.group.visible = false;
+    this.act4FpWeapons.group.visible = false;
+    this.nikitaSniperRifle.visible = false;
+
+    this.syncAct2EnemyAppearance();
+    this.chasers[0].active = true;
+    this.chasers[0].x = ACT4_RONER_POS.x;
+    this.chasers[0].z = ACT4_RONER_POS.z;
+    this.chasers[0].rig.root.visible = true;
+    this.chasers[0].rig.root.position.set(ACT4_RONER_POS.x, 0, ACT4_RONER_POS.z);
+    this.chasers[0].rig.root.rotation.y = 0;
+    this.chasers[0].currentBubbleText = null;
+
+    this.chasers[1].active = true;
+    this.chasers[1].x = ACT4_SASHA_POS.x;
+    this.chasers[1].z = ACT4_SASHA_POS.z;
+    this.chasers[1].rig.root.visible = true;
+    this.chasers[1].rig.root.position.set(ACT4_SASHA_POS.x, 0, ACT4_SASHA_POS.z);
+    this.chasers[1].rig.root.rotation.y = 0;
+    this.chasers[1].currentBubbleText = null;
+
+    for (const c4 of this.act4Clones) {
+      c4.active = false;
+      c4.rig.root.visible = false;
+      c4.currentBubbleText = null;
+      c4.deadTimer = 0;
+    }
+
+    if (this.act4VillageObjs) {
+      this.act4VillageObjs.giornoGroup.visible = true;
+      this.act4VillageObjs.giornoGroup.position.set(2.4, 0, -4.5);
+      this.act4VillageObjs.giornoGroup.rotation.y = 0;
+      this.act4VillageObjs.tableGroup.visible = false;
+      this.act4VillageObjs.rocketMesh.visible = false;
+      this.act4VillageObjs.explosionSphere.visible = false;
+      this.act4VillageObjs.explosionLight.intensity = 0;
+      for (const tr of this.act4VillageObjs.turrets) {
+        tr.group.visible = false;
+        tr.muzzleFlash.visible = false;
+        tr.tracer.visible = false;
+      }
+    }
+
+    this.pushHud(true);
+  }
+
+  private updateAct4IntroCutscene(dt: number, elapsed: number): void {
+    this.cutsceneTimer += dt;
+    const t = this.cutsceneTimer;
+    const isEn = this.settings.language === 'en';
+    const triggerStage = (s: number) => {
+      if (this.cutsceneStage >= s) return false;
+      this.cutsceneStage = s;
+      return true;
+    };
+
+    if (t < 2.6) {
+      if (triggerStage(0)) {
+        const line = getCutsceneLine('act4_intro_0', this.settings);
+        this.cutsceneSubtitle = {
+          speaker: 'nikitys6666',
+          text: line.display,
+          tone: 'nikita',
+        };
+        this.playerBubbleText = line.display;
+        this.audio.playDialogueLine(line.speech, 1.04, line.hasCensorBeep);
+      }
+      this.playerZ = THREE.MathUtils.lerp(14.0, 2.5, Math.min(1, t / 2.2));
+      this.playerRig.root.position.set(0, 0, this.playerZ);
+      animateRobloxCharacter(this.playerRig, t < 2.2 ? 0.9 : 0, dt, elapsed, false, false, false);
+    } else if (t < 5.3) {
+      if (triggerStage(1)) {
+        const line = getCutsceneLine('act4_intro_1', this.settings);
+        this.cutsceneSubtitle = {
+          speaker: isEn ? 'Giorno Giovanna' : 'Джорно Джавано',
+          text: line.display,
+          tone: 'enemy',
+        };
+        this.playerBubbleText = null;
+        this.act4GiornoText = line.display;
+        this.audio.playDialogueLine(line.speech, 0.96, line.hasCensorBeep);
+      }
+      animateRobloxCharacter(this.playerRig, 0, dt, elapsed, false, false, false);
+    } else if (t < 7.6) {
+      if (triggerStage(2)) {
+        const line = getCutsceneLine('act4_intro_2', this.settings);
+        this.cutsceneSubtitle = {
+          speaker: 'nikitys6666',
+          text: line.display,
+          tone: 'nikita',
+        };
+        this.act4GiornoText = null;
+        this.playerBubbleText = line.display;
+        this.audio.playDialogueLine(line.speech, 1.08, line.hasCensorBeep);
+      }
+      animateRobloxCharacter(this.playerRig, 0, dt, elapsed, false, false, false);
+    } else if (t < 10.0) {
+      if (triggerStage(3)) {
+        const line = getCutsceneLine('act4_intro_3', this.settings);
+        this.cutsceneSubtitle = {
+          speaker: isEn ? 'Giorno Giovanna' : 'Джорно Джавано',
+          text: line.display,
+          tone: 'enemy',
+        };
+        this.playerBubbleText = null;
+        this.act4GiornoText = line.display;
+        this.audio.playDialogueLine(line.speech, 0.98, line.hasCensorBeep);
+      }
+      animateRobloxCharacter(this.playerRig, 0, dt, elapsed, false, false, false);
+    } else {
+      if (triggerStage(4)) {
+        const line = getCutsceneLine('act4_intro_4', this.settings);
+        this.cutsceneSubtitle = {
+          speaker: isEn ? 'RONER Clones' : 'Клоны RONER',
+          text: line.display,
+          tone: 'enemy',
+        };
+        this.act4GiornoText = null;
+        this.playerBubbleText = null;
+        this.cameraShake = 0.25;
+        this.audio.playDialogueLine(line.speech, 0.92, line.hasCensorBeep);
+        const offsets = [
+          { x: 1.3, z: -4.1 },
+          { x: 3.5, z: -4.1 },
+          { x: 1.5, z: -5.3 },
+        ];
+        for (let i = 0; i < 3; i++) {
+          const c4 = this.act4Clones[i];
+          if (!c4) continue;
+          c4.active = true;
+          c4.x = offsets[i].x;
+          c4.z = offsets[i].z;
+          c4.rig.root.visible = true;
+          c4.currentBubbleText = i === 0 ? line.display : null;
+        }
+      }
+      const dragP = THREE.MathUtils.clamp((t - 10.0) / 3.4, 0, 1);
+      const gx = THREE.MathUtils.lerp(2.4, -27.5, dragP);
+      const gz = THREE.MathUtils.lerp(-4.5, -13.5, dragP);
+      if (this.act4VillageObjs) {
+        this.act4VillageObjs.giornoGroup.position.set(gx, Math.abs(Math.sin(elapsed * 14)) * 0.16, gz);
+        this.act4VillageObjs.giornoGroup.rotation.z = Math.sin(elapsed * 12) * 0.12;
+      }
+      for (let i = 0; i < 3; i++) {
+        const c4 = this.act4Clones[i];
+        if (!c4) continue;
+        c4.x = gx + (i - 1) * 1.1;
+        c4.z = gz + (i % 2 === 0 ? 0.65 : -0.65);
+        c4.rig.root.position.set(c4.x, 0, c4.z);
+        c4.rig.root.rotation.y = -Math.PI / 2;
+        animateRobloxCharacter(c4.rig, 1.35, dt, elapsed, false, false, true);
+      }
+      animateRobloxCharacter(this.playerRig, 0, dt, elapsed, false, false, false);
+    }
+
+    if (t >= 13.7) {
+      this.beginAct4Playing();
+    }
+  }
+
+  private beginAct4Playing(): void {
+    this.phase = 'playing';
+    this.act4Stage = 'walk_to_house';
+    this.act4Kills = 0;
+    this.act4Wave = 1;
+    this.act4WaveToSpawn = 0;
+    this.act4WaveSpawnTimer = 0;
+    this.act4WaveClearedPause = 0;
+    this.act4ActiveWeapon = 'pistol';
+    this.act4UnlockedWeapons = ['pistol'];
+    this.act4HasTurrets = false;
+    this.act4BossHp = 0;
+    this.act4BossRoarTimer = 0;
+    this.act4Hp = this.act4MaxHp;
+    this.act4InvulnTimer = 0;
+    this.act4FireCooldown = 0;
+    this.act4WeaponRecoil = 0;
+    this.act4MuzzleTimer = 0;
+    this.act4FlameTimer = 0;
+    this.act4ExplosionTimer = 0;
+    this.act4RocketActive = false;
+    this.act4NearShop = null;
+    this.act4GiornoText = null;
+    this.act4UziSecretTriggered = false;
+    this.isPrimaryFireHeld = false;
+    this.cutsceneSubtitle = null;
+    this.playerBubbleText = null;
+    this.interactPrompt = null;
+    this.flashlightOn = true;
+    this.fog.density = 0.011;
+
+    this.playerX = 0;
+    this.playerZ = ACT4_START_Z;
+    this.playerY = 0;
+    this.playerVy = 0;
+    this.isGrounded = true;
+    this.playerYaw = Math.PI;
+    this.camYaw = 0;
+    this.camPitch = 0.02;
+    this.playerRig.root.visible = false;
+    this.tpFlashlight.group.visible = false;
+    this.fpSniper.group.visible = false;
+    this.act4FpWeapons.group.visible = false;
+
+    for (const c4 of this.act4Clones) {
+      c4.active = false;
+      c4.rig.root.visible = false;
+      c4.currentBubbleText = null;
+      c4.deadTimer = 0;
+    }
+
+    if (this.act4VillageObjs) {
+      this.act4VillageObjs.giornoGroup.visible = false;
+      this.act4VillageObjs.giornoGroup.rotation.z = 0;
+      this.act4VillageObjs.tableGroup.visible = false;
+      this.act4VillageObjs.rocketMesh.visible = false;
+      this.act4VillageObjs.explosionSphere.visible = false;
+      this.act4VillageObjs.explosionLight.intensity = 0;
+      this.act4VillageObjs.sashaShopGlow.visible = true;
+      this.act4VillageObjs.ronerShopGlow.visible = true;
+      for (const tr of this.act4VillageObjs.turrets) {
+        tr.group.visible = false;
+        tr.muzzleFlash.visible = false;
+        tr.tracer.visible = false;
+      }
+    }
+
+    // Place serious Sasha (WITH VISOR!) and serious Roner (NO visor!) outside the house
+    this.syncAct2EnemyAppearance();
+    this.chasers[0].active = true;
+    this.chasers[0].x = ACT4_RONER_POS.x;
+    this.chasers[0].z = ACT4_RONER_POS.z;
+    this.chasers[0].rig.root.visible = true;
+    this.chasers[0].rig.root.position.set(ACT4_RONER_POS.x, 0, ACT4_RONER_POS.z);
+    this.chasers[0].rig.root.rotation.y = 0;
+    this.chasers[0].currentBubbleText = null;
+
+    this.chasers[1].active = true;
+    this.chasers[1].x = ACT4_SASHA_POS.x;
+    this.chasers[1].z = ACT4_SASHA_POS.z;
+    this.chasers[1].rig.root.visible = true;
+    this.chasers[1].rig.root.position.set(ACT4_SASHA_POS.x, 0, ACT4_SASHA_POS.z);
+    this.chasers[1].rig.root.rotation.y = 0;
+    this.chasers[1].currentBubbleText = null;
+
+    const isEn = this.settings.language === 'en';
+    this.eventBanner = isEn
+      ? 'Walk up to the house where Sasha (visor) & Roner are waiting!'
+      : 'Подойди к домику впереди, где ждут Саша (с визором) и Roner!';
+    this.eventBannerTimer = 5.5;
+    this.pushHud(true);
+    this.callbacks.onBubblesUpdate([]);
+  }
+
+  private startAct4Wave(wave: number): void {
+    this.act4Wave = wave;
+    this.act4WaveClearedPause = 0;
+    this.act4WaveSpawnTimer = 0.2;
+    const isEn = this.settings.language === 'en';
+
+    if (wave <= 6) {
+      this.act4WaveToSpawn = ACT4_WAVE_COUNTS[wave - 1] ?? 10;
+      this.eventBanner = isEn
+        ? `WAVE ${wave}/7 · ${this.act4WaveToSpawn} RONER Clones incoming!`
+        : `ВОЛНА ${wave}/7 · Идут ${this.act4WaveToSpawn} Клонов RONER!`;
+      this.eventBannerTimer = 3.8;
+    } else {
+      // Wave 7: BOSS SASHA 67!!!!!! (HP 11488, lightning eyes, shouts 67!!, pumps arms)
+      this.act4WaveToSpawn = 0;
+      this.act4BossHp = ACT4_BOSS_MAX_HP;
+      this.act4BossRoarTimer = 0.2;
+      const boss = this.chasers[1];
+      boss.active = true;
+      boss.x = 0;
+      boss.z = 26;
+      boss.rig.root.visible = true;
+      boss.rig.root.position.set(0, 0, 26);
+      this.syncAct2EnemyAppearance();
+      this.cameraShake = 0.65;
+      this.audio.playBoss67Roar();
+      boss.currentBubbleText = '67!!';
+      boss.bubbleTimer = 3.0;
+      boss.isScream = true;
+      this.eventBanner = isEn
+        ? 'WAVE 7: BOSS SASHA 67!!!!!! (HP 11488)!'
+        : 'ВОЛНА 7: БОСС САНЯ 67!!!!!! (HP 11488)!';
+      this.eventBannerTimer = 6.0;
+    }
+    this.pushHud(true);
+  }
+
+  public selectAct4Weapon(weapon: Act4WeaponId): void {
+    if (this.mode !== 'story_act4' || this.phase !== 'playing' || this.act4Stage !== 'battle') return;
+    const threshold = ACT4_WEAPON_THRESHOLDS[weapon];
+    if (this.act4Kills < threshold) {
+      const isEn = this.settings.language === 'en';
+      this.eventBanner = isEn
+        ? `Need ${threshold} kills for this weapon (kills are NOT spent)!`
+        : `Нужно ${threshold} килов для этого оружия (килы не тратятся)!`;
+      this.eventBannerTimer = 2.0;
+      this.pushHud(true);
+      return;
+    }
+    // Auto-unlock without spending kills!
+    if (!this.act4UnlockedWeapons.includes(weapon)) {
+      this.act4UnlockedWeapons = [...this.act4UnlockedWeapons, weapon];
+      this.audio.playPickup(true);
+    } else {
+      this.audio.playFlashlightClick(true);
+    }
+    this.act4ActiveWeapon = weapon;
+    this.pushHud(true);
+  }
+
+  public unlockAct4Turrets(): void {
+    if (this.mode !== 'story_act4' || this.phase !== 'playing' || this.act4Stage !== 'battle') return;
+    const isEn = this.settings.language === 'en';
+    if (this.act4HasTurrets) return;
+    if (this.act4Kills < 100) {
+      this.eventBanner = isEn
+        ? 'Roner sells Auto-Turrets at 100 kills (kills are NOT spent)!'
+        : 'Roner ставит Автоматические пулемёты за 100 килов (килы не тратятся)!';
+      this.eventBannerTimer = 2.4;
+      this.pushHud(true);
+      return;
+    }
+    this.act4HasTurrets = true;
+    if (this.act4VillageObjs) {
+      for (const tr of this.act4VillageObjs.turrets) {
+        tr.group.visible = true;
+        tr.cooldown = 0.05;
+      }
+    }
+    this.audio.playPickup(true);
+    this.chasers[0].currentBubbleText = isEn
+      ? 'AUTO-TURRETS DEPLOYED!'
+      : 'ПУЛЕМЁТЫ ЗАПУЩЕНЫ!';
+    this.chasers[0].bubbleTimer = 2.6;
+    this.eventBanner = isEn
+      ? 'Roner activated 2 Auto-Turrets! Kills were NOT spent!'
+      : 'Roner поставил 2 Автоматических пулемёта! Килы не потратились!';
+    this.eventBannerTimer = 3.5;
+    this.pushHud(true);
+  }
+
+  public interactAct4Village(): void {
+    if (this.mode !== 'story_act4' || this.phase !== 'playing') return;
+    this.audio.unlock();
+    const isEn = this.settings.language === 'en';
+
+    if (this.act4Stage === 'walk_to_house') {
+      const distHouse = Math.hypot(this.playerX - 0, this.playerZ - -12.8);
+      if (distHouse <= 8.5) {
+        this.act4Stage = 'battle';
+        this.act4ActiveWeapon = 'pistol';
+        this.act4UnlockedWeapons = ['pistol'];
+        this.syncAct2EnemyAppearance();
+        const line = getCutsceneLine('act4_house_0', this.settings);
+        this.chasers[1].currentBubbleText = line.display;
+        this.chasers[1].bubbleTimer = 3.2;
+        this.audio.playDialogueLine(line.speech, 1.0, line.hasCensorBeep);
+        this.audio.playGunShot('pistol');
+        this.startAct4Wave(1);
+        return;
+      }
+    }
+
+    if (this.act4Stage === 'battle') {
+      if (this.act4NearShop === 'sasha') {
+        let unlockedAny = false;
+        for (const w of ACT4_WEAPON_ORDER) {
+          if (this.act4Kills >= ACT4_WEAPON_THRESHOLDS[w] && !this.act4UnlockedWeapons.includes(w)) {
+            this.act4UnlockedWeapons = [...this.act4UnlockedWeapons, w];
+            this.act4ActiveWeapon = w;
+            unlockedAny = true;
+          }
+        }
+        if (unlockedAny) {
+          this.audio.playPickup(true);
+          this.chasers[1].currentBubbleText = isEn ? 'Take the gun!' : 'Держи ствол!';
+          this.chasers[1].bubbleTimer = 2.2;
+          this.pushHud(true);
+        } else {
+          // Cycle unlocked weapons if already claimed
+          const idx = this.act4UnlockedWeapons.indexOf(this.act4ActiveWeapon);
+          const next = this.act4UnlockedWeapons[(idx + 1) % this.act4UnlockedWeapons.length];
+          if (next) this.selectAct4Weapon(next);
+        }
+      } else if (this.act4NearShop === 'roner') {
+        this.unlockAct4Turrets();
+      } else {
+        this.fireAct4Weapon();
+      }
+    }
+  }
+
+  private damageAct4Enemy(target: 'boss' | Act4CloneEntity, dmg: number, isHeadshot = false): void {
+    const isEn = this.settings.language === 'en';
+    if (target === 'boss') {
+      if (this.act4BossHp <= 0) return;
+      this.act4BossHp = Math.max(0, this.act4BossHp - dmg);
+      const boss = this.chasers[1];
+      this.emitParticles(boss.x, 3.8, boss.z, 'gold');
+      this.floatingTexts.push({
+        id: this.nextFloatId++,
+        text: isHeadshot ? `-${dmg} CRIT!` : `-${dmg}`,
+        worldX: boss.x + (Math.random() - 0.5) * 1.4,
+        worldY: 5.4,
+        worldZ: boss.z,
+        life: 0.75,
+        maxLife: 0.75,
+        isGold: true,
+      });
+      if (this.act4BossHp <= 0) {
+        boss.active = false;
+        boss.rig.root.visible = false;
+        boss.currentBubbleText = null;
+        this.emitParticles(boss.x, 3.2, boss.z, 'gold');
+        this.audio.playExplosion();
+        this.startAct4OutroCutscene();
+      }
+      return;
+    }
+
+    target.hp -= dmg;
+    this.emitParticles(target.x, 1.8, target.z, 'gold');
+    this.floatingTexts.push({
+      id: this.nextFloatId++,
+      text: `-${dmg}`,
+      worldX: target.x,
+      worldY: 2.55,
+      worldZ: target.z,
+      life: 0.65,
+      maxLife: 0.65,
+      isGold: isHeadshot,
+    });
+    if (target.hp <= 0 && target.deadTimer <= 0) {
+      target.deadTimer = 0.65;
+      target.currentBubbleText = 'X_X';
+      target.bubbleTimer = 0.65;
+      this.act4Kills += 1;
+
+      const tUi = getUiText(this.settings.language);
+      for (const w of ACT4_WEAPON_ORDER) {
+        const req = ACT4_WEAPON_THRESHOLDS[w];
+        if (req > 0 && this.act4Kills === req && !this.act4UnlockedWeapons.includes(w)) {
+          this.act4UnlockedWeapons = [...this.act4UnlockedWeapons, w];
+          this.act4ActiveWeapon = w;
+          this.audio.playPickup(true);
+          this.eventBanner = isEn
+            ? `Sasha unlocked ${tUi.act4Weapons[w]} (${req} kills — NOT spent)!`
+            : `Саня выдал: ${tUi.act4Weapons[w]} (${req} килов — не потратились)!`;
+          this.eventBannerTimer = 3.5;
+        }
+      }
+      if (this.act4Kills === 100 && !this.act4HasTurrets) {
+        this.eventBanner = isEn
+          ? '100 KILLS! Click Roner Auto-Turrets or press [E] at Roner!'
+          : '100 КИЛОВ! Жми кнопку пулемётов или подойди к Roner [E]!';
+        this.eventBannerTimer = 4.5;
+      }
+    }
+  }
+
+  private detonateAct4Rocket(cx: number, cy: number, cz: number): void {
+    this.act4RocketActive = false;
+    this.act4ExplosionTimer = 0.45;
+    this.cameraShake = 0.48;
+    this.audio.playExplosion();
+    if (this.act4VillageObjs) {
+      this.act4VillageObjs.rocketMesh.visible = false;
+      this.act4VillageObjs.explosionSphere.visible = true;
+      this.act4VillageObjs.explosionSphere.position.set(cx, Math.max(0.8, cy), cz);
+      this.act4VillageObjs.explosionSphere.scale.setScalar(1.2);
+      this.act4VillageObjs.explosionLight.position.set(cx, 2.2, cz);
+      this.act4VillageObjs.explosionLight.intensity = 18;
+    }
+    this.emitParticles(cx, Math.max(1.2, cy), cz, 'gold');
+
+    const splashR = 6.5;
+    for (const c4 of this.act4Clones) {
+      if (!c4.active || c4.deadTimer > 0) continue;
+      const d = Math.hypot(c4.x - cx, c4.z - cz);
+      if (d <= splashR) {
+        const dmg = d < 2.2 ? 260 : 185;
+        this.damageAct4Enemy(c4, dmg, d < 2.2);
+      }
+    }
+    const boss = this.chasers[1];
+    if (this.act4Wave === 7 && this.act4BossHp > 0 && boss.active) {
+      const bd = Math.hypot(boss.x - cx, boss.z - cz);
+      if (bd <= splashR + 1.8) {
+        this.damageAct4Enemy('boss', bd < 2.8 ? 420 : 260, bd < 2.8);
+      }
+    }
+    this.pushHud(true);
+  }
+
+  private fireAct4Weapon(): void {
+    if (this.mode !== 'story_act4' || this.phase !== 'playing' || this.act4Stage !== 'battle') return;
+    if (this.act4FireCooldown > 0) return;
+    this.audio.unlock();
+
+    const w = this.act4ActiveWeapon;
+    if (w === 'pistol') {
+      this.act4FireCooldown = 0.25;
+      this.act4WeaponRecoil = 0.85;
+      this.act4MuzzleTimer = 0.06;
+      this.cameraShake = 0.08;
+      this.audio.playGunShot('pistol');
+    } else if (w === 'uzi') {
+      this.act4FireCooldown = 0.085;
+      this.act4WeaponRecoil = 0.55;
+      this.act4MuzzleTimer = 0.045;
+      this.cameraShake = 0.05;
+      this.audio.playGunShot('uzi');
+    } else if (w === 'ak47') {
+      this.act4FireCooldown = 0.11;
+      this.act4WeaponRecoil = 0.72;
+      this.act4MuzzleTimer = 0.055;
+      this.cameraShake = 0.08;
+      this.audio.playGunShot('ak47');
+    } else if (w === 'sniper') {
+      this.act4FireCooldown = 0.44;
+      this.act4WeaponRecoil = 1.05;
+      this.act4MuzzleTimer = 0.08;
+      this.cameraShake = 0.22;
+      this.audio.playSniperShot();
+    } else if (w === 'rpg') {
+      this.act4FireCooldown = 0.62;
+      this.act4WeaponRecoil = 1.15;
+      this.act4MuzzleTimer = 0.09;
+      this.cameraShake = 0.26;
+      this.audio.playGunShot('rpg');
+      this.camera.getWorldDirection(_beamDir);
+      this.act4RocketActive = true;
+      this.act4RocketPos.copy(this.camera.position).addScaledVector(_beamDir, 0.9);
+      this.act4RocketDir.copy(_beamDir).normalize();
+      this.act4RocketLife = 1.35;
+      if (this.act4VillageObjs) {
+        this.act4VillageObjs.rocketMesh.visible = true;
+        this.act4VillageObjs.rocketMesh.position.copy(this.act4RocketPos);
+        _vec3b.copy(this.act4RocketPos).add(this.act4RocketDir);
+        this.act4VillageObjs.rocketMesh.lookAt(_vec3b);
+      }
+      return;
+    } else if (w === 'flamethrower') {
+      this.act4FireCooldown = 0.08;
+      this.act4WeaponRecoil = 0.2;
+      this.act4FlameTimer = 0.14;
+      if (this.act4FlameAudioTimer <= 0) {
+        this.act4FlameAudioTimer = 0.11;
+        this.audio.playFlameBurst();
+      }
+      this.camera.getWorldDirection(_beamDir);
+      _beamOrigin.copy(this.camera.position);
+      let hitCount = 0;
+      for (const c4 of this.act4Clones) {
+        if (!c4.active || c4.deadTimer > 0) continue;
+        _vec3.set(c4.x - _beamOrigin.x, 1.4 - _beamOrigin.y, c4.z - _beamOrigin.z);
+        const dist = _vec3.length();
+        if (dist > 14.0 || dist < 0.2) continue;
+        const dot = _vec3.divideScalar(dist).dot(_beamDir);
+        if (dot >= 0.78) {
+          this.damageAct4Enemy(c4, 54, false);
+          hitCount++;
+        }
+      }
+      const boss = this.chasers[1];
+      if (this.act4Wave === 7 && this.act4BossHp > 0 && boss.active) {
+        _vec3.set(boss.x - _beamOrigin.x, 3.0 - _beamOrigin.y, boss.z - _beamOrigin.z);
+        const dist = _vec3.length();
+        if (dist <= 16.0 && dist > 0.2) {
+          const dot = _vec3.divideScalar(dist).dot(_beamDir);
+          if (dot >= 0.74) {
+            this.damageAct4Enemy('boss', 72, false);
+            hitCount++;
+          }
+        }
+      }
+      if (hitCount > 0) this.pushHud(true);
+      return;
+    }
+
+    // Hitscan check (pistol, uzi, ak47, sniper)
+    this.camera.getWorldDirection(_beamDir);
+    _beamOrigin.copy(this.camera.position);
+
+    const dmgMap: Record<'pistol' | 'uzi' | 'ak47' | 'sniper', number> = {
+      pistol: 45,
+      uzi: 34,
+      ak47: 58,
+      sniper: 320,
+    };
+    const baseDmg = dmgMap[w];
+
+    let bestClone: Act4CloneEntity | null = null;
+    let hitBoss = false;
+    let bossHeadshot = false;
+    let bestDist = 110;
+
+    for (const c4 of this.act4Clones) {
+      if (!c4.active || c4.deadTimer > 0) continue;
+      for (const hitY of [2.05, 1.3]) {
+        _vec3.set(c4.x - _beamOrigin.x, hitY - _beamOrigin.y, c4.z - _beamOrigin.z);
+        const along = _vec3.dot(_beamDir);
+        if (along <= 0.4 || along > bestDist) continue;
+        _vec3b.copy(_beamOrigin).addScaledVector(_beamDir, along);
+        const perp = Math.hypot(_vec3b.x - c4.x, _vec3b.y - hitY, _vec3b.z - c4.z);
+        if (perp <= 0.95) {
+          bestDist = along;
+          bestClone = c4;
+          hitBoss = false;
+          break;
+        }
+      }
+    }
+
+    const boss = this.chasers[1];
+    if (this.act4Wave === 7 && this.act4BossHp > 0 && boss.active) {
+      for (const hitY of [5.8, 3.6]) {
+        _vec3.set(boss.x - _beamOrigin.x, hitY - _beamOrigin.y, boss.z - _beamOrigin.z);
+        const along = _vec3.dot(_beamDir);
+        if (along <= 0.4 || along > bestDist) continue;
+        _vec3b.copy(_beamOrigin).addScaledVector(_beamDir, along);
+        const perp = Math.hypot(_vec3b.x - boss.x, _vec3b.y - hitY, _vec3b.z - boss.z);
+        if (perp <= 2.4) {
+          bestDist = along;
+          bestClone = null;
+          hitBoss = true;
+          bossHeadshot = hitY > 4.8;
+          break;
+        }
+      }
+    }
+
+    const muzzlePos = _vec3
+      .set(0.24, -0.14, -1.0)
+      .applyQuaternion(this.camera.quaternion)
+      .add(this.camera.position);
+    const beam = this.sniperTracers[0];
+    if (beam) {
+      const targetPos = hitBoss
+        ? _vec3b.set(boss.x, 4.4, boss.z)
+        : bestClone
+          ? _vec3b.set(bestClone.x, 1.75, bestClone.z)
+          : _vec3b.copy(_beamOrigin).addScaledVector(_beamDir, 55);
+      const dist = muzzlePos.distanceTo(targetPos);
+      beam.position.copy(muzzlePos).lerp(targetPos, 0.5);
+      beam.scale.set(1, 1, dist);
+      beam.lookAt(targetPos);
+      beam.visible = true;
+      this.tracerLife = w === 'sniper' ? 0.24 : 0.1;
+    }
+
+    if (hitBoss) {
+      this.damageAct4Enemy('boss', bossHeadshot ? Math.round(baseDmg * 1.4) : baseDmg, bossHeadshot);
+      this.pushHud(true);
+    } else if (bestClone) {
+      this.damageAct4Enemy(bestClone, baseDmg, false);
+      this.pushHud(true);
+    }
+  }
+
+  private triggerAct4UziSecret(): void {
+    if (
+      this.mode !== 'story_act4' ||
+      this.phase !== 'playing' ||
+      this.act4Stage !== 'battle' ||
+      !this.act4UnlockedWeapons.includes('uzi')
+    ) {
+      return;
+    }
+    this.audio.unlock();
+    const line = getCutsceneLine('act4_uzi_secret', this.settings);
+    this.audio.playDialogueLine(line.speech, 1.12, line.hasCensorBeep);
+    this.audio.playExplosion();
+    this.cameraShake = 0.55;
+    this.floatingTexts.push({
+      id: this.nextFloatId++,
+      text: line.display,
+      worldX: this.playerX,
+      worldY: 2.8,
+      worldZ: this.playerZ - 2.2,
+      life: 1.8,
+      maxLife: 1.8,
+      isGold: true,
+    });
+    this.emitParticles(this.playerX, 1.8, this.playerZ, 'gold');
+
+    for (const c4 of this.act4Clones) {
+      if (!c4.active || c4.deadTimer > 0) continue;
+      if (Math.hypot(c4.x - this.playerX, c4.z - this.playerZ) <= 15) {
+        this.damageAct4Enemy(c4, 380, true);
+      }
+    }
+    const boss = this.chasers[1];
+    if (this.act4Wave === 7 && this.act4BossHp > 0 && boss.active) {
+      if (Math.hypot(boss.x - this.playerX, boss.z - this.playerZ) <= 18) {
+        this.damageAct4Enemy('boss', 550, true);
+      }
+    }
+
+    if (!this.act4UziSecretTriggered) {
+      this.act4UziSecretTriggered = true;
+      const unlocked = unlockSingleAchievement(this.achievements, 'act4_shahediki');
+      this.emitAchievementResult(unlocked);
+    }
+    this.pushHud(true);
+  }
+
+  private updateAct4Playing(dt: number, elapsed: number): void {
+    this.elapsedPlaying += dt;
+    const isEn = this.settings.language === 'en';
+    if (this.eventBannerTimer > 0) {
+      this.eventBannerTimer -= dt;
+      if (this.eventBannerTimer <= 0) this.eventBanner = null;
+    }
+    if (this.act4FireCooldown > 0) this.act4FireCooldown = Math.max(0, this.act4FireCooldown - dt);
+    if (this.act4WeaponRecoil > 0) this.act4WeaponRecoil = Math.max(0, this.act4WeaponRecoil - dt * 5.8);
+    if (this.act4MuzzleTimer > 0) this.act4MuzzleTimer = Math.max(0, this.act4MuzzleTimer - dt);
+    if (this.act4FlameTimer > 0) this.act4FlameTimer = Math.max(0, this.act4FlameTimer - dt);
+    if (this.act4FlameAudioTimer > 0) this.act4FlameAudioTimer = Math.max(0, this.act4FlameAudioTimer - dt);
+    if (this.act4InvulnTimer > 0) this.act4InvulnTimer = Math.max(0, this.act4InvulnTimer - dt);
+    if (this.cameraShake > 0.005) {
+      this.cameraShake = THREE.MathUtils.damp(this.cameraShake, 0, 9, dt);
+    }
+
+    if (this.act4ExplosionTimer > 0 && this.act4VillageObjs) {
+      this.act4ExplosionTimer = Math.max(0, this.act4ExplosionTimer - dt);
+      const prog = 1 - this.act4ExplosionTimer / 0.45;
+      this.act4VillageObjs.explosionSphere.scale.setScalar(1.2 + prog * 5.2);
+      (this.act4VillageObjs.explosionSphere.material as THREE.MeshBasicMaterial).opacity =
+        0.78 * (1 - prog);
+      this.act4VillageObjs.explosionLight.intensity = 18 * (1 - prog);
+      if (this.act4ExplosionTimer <= 0) {
+        this.act4VillageObjs.explosionSphere.visible = false;
+        this.act4VillageObjs.explosionLight.intensity = 0;
+      }
+    }
+
+    // Player movement
+    let inX = this.virtualMoveX;
+    let inZ = this.virtualMoveZ;
+    if (this.heldKeys.has('KeyW') || this.heldKeys.has('ArrowUp')) inZ -= 1;
+    if (this.heldKeys.has('KeyS') || this.heldKeys.has('ArrowDown')) inZ += 1;
+    if (this.heldKeys.has('KeyA') || this.heldKeys.has('ArrowLeft')) inX -= 1;
+    if (this.heldKeys.has('KeyD') || this.heldKeys.has('ArrowRight')) inX += 1;
+    if (this.heldKeys.has('KeyQ')) this.camYaw += dt * 2.1;
+
+    const inputLen = Math.hypot(inX, inZ);
+    const hasMove = inputLen > 0.05;
+    if (hasMove) {
+      inX /= Math.max(1, inputLen);
+      inZ /= Math.max(1, inputLen);
+    }
+
+    const wantsSprint =
+      (this.heldKeys.has('ShiftLeft') ||
+        this.heldKeys.has('ShiftRight') ||
+        this.virtualSprint) &&
+      hasMove;
+    const isSprinting = wantsSprint && this.stamina > 2;
+    if (isSprinting) {
+      this.stamina = Math.max(0, this.stamina - dt * 18);
+    } else {
+      this.stamina = Math.min(100, this.stamina + dt * (hasMove ? 18 : 28));
+    }
+
+    const moveSpeed = isSprinting ? 12.2 : 8.5;
+    if (hasMove) {
+      const sinY = Math.sin(this.camYaw);
+      const cosY = Math.cos(this.camYaw);
+      const worldDx = inX * cosY + inZ * sinY;
+      const worldDz = -inX * sinY + inZ * cosY;
+      this.playerX += worldDx * moveSpeed * dt;
+      this.playerZ += worldDz * moveSpeed * dt;
+      const res = this.resolveAct4VillageCollision(this.playerX, this.playerZ, 0.55);
+      this.playerX = res.x;
+      this.playerZ = res.z;
+
+      if (this.isGrounded) {
+        this.footstepAccum += dt * (isSprinting ? 2.8 : 2.0);
+        if (this.footstepAccum >= 1) {
+          this.footstepAccum = 0;
+          this.audio.playFootstep(isSprinting);
+        }
+      }
+    }
+    this.playerYaw = this.camYaw + Math.PI;
+
+    if (this.isGrounded) this.coyoteTimer = 0.12;
+    else this.coyoteTimer = Math.max(0, this.coyoteTimer - dt);
+    if (this.jumpBufferTimer > 0) this.jumpBufferTimer = Math.max(0, this.jumpBufferTimer - dt);
+    if (this.jumpBufferTimer > 0 && this.coyoteTimer > 0) {
+      this.playerVy = 8.4;
+      this.isGrounded = false;
+      this.coyoteTimer = 0;
+      this.jumpBufferTimer = 0;
+      this.audio.playJump();
+    }
+    if (!this.isGrounded || this.playerY > 0.01) {
+      this.playerVy -= 22.5 * dt;
+      this.playerY += this.playerVy * dt;
+      if (this.playerY <= 0) {
+        this.playerY = 0;
+        this.playerVy = 0;
+        this.isGrounded = true;
+      }
+    } else {
+      this.playerY = 0;
+    }
+
+    // Idle animation for Roner & Sasha at the house (or Boss Sasha 67 in Wave 7)
+    const roner = this.chasers[0];
+    if (roner.active) {
+      roner.rig.root.position.set(roner.x, 0, roner.z);
+      roner.rig.root.rotation.y = Math.atan2(this.playerX - roner.x, this.playerZ - roner.z);
+      animateRobloxCharacter(roner.rig, 0, dt, elapsed, false, false, true);
+      if (roner.bubbleTimer > 0) {
+        roner.bubbleTimer -= dt;
+        if (roner.bubbleTimer <= 0) roner.currentBubbleText = null;
+      }
+    }
+
+    const sasha = this.chasers[1];
+    if (sasha.bubbleTimer > 0) {
+      sasha.bubbleTimer -= dt;
+      if (sasha.bubbleTimer <= 0) sasha.currentBubbleText = null;
+    }
+
+    if (this.act4Stage === 'walk_to_house') {
+      sasha.rig.root.position.set(sasha.x, 0, sasha.z);
+      sasha.rig.root.rotation.y = Math.atan2(this.playerX - sasha.x, this.playerZ - sasha.z);
+      animateRobloxCharacter(sasha.rig, 0, dt, elapsed, false, false, true);
+
+      const distPorch = Math.hypot(this.playerX, this.playerZ - -12.8);
+      if (distPorch < 3.6) {
+        this.interactAct4Village();
+        return;
+      }
+      this.interactPrompt =
+        distPorch <= 8.5
+          ? isEn
+            ? '[E / LMB] Talk to Sasha & Roner — Get Pistol!'
+            : '[E / ЛКМ] Подойти к Саше и Roner — взять Пистолет!'
+          : null;
+      return;
+    }
+
+    // Battle stage!
+    if (sasha.active && this.act4Wave < 7) {
+      sasha.rig.root.position.set(sasha.x, 0, sasha.z);
+      sasha.rig.root.rotation.y = Math.atan2(this.playerX - sasha.x, this.playerZ - sasha.z);
+      animateRobloxCharacter(sasha.rig, 0, dt, elapsed, false, false, true);
+    }
+
+    // Hold-to-fire support (especially smooth for Uzi, AK-47, Flamethrower)
+    if (this.isPrimaryFireHeld) {
+      this.fireAct4Weapon();
+    }
+
+    // Shop proximity check (kills are NOT spent!)
+    const dSasha = Math.hypot(this.playerX - ACT4_SASHA_POS.x, this.playerZ - ACT4_SASHA_POS.z);
+    const dRoner = Math.hypot(this.playerX - ACT4_RONER_POS.x, this.playerZ - ACT4_RONER_POS.z);
+    if (dSasha < 3.4 && this.act4Wave < 7) {
+      this.act4NearShop = 'sasha';
+      this.interactPrompt = isEn
+        ? '[E] Sasha Weapon Shop (1-6, kills NOT spent)'
+        : '[E] Лавка Сани (пушки 1-6, килы не тратятся)';
+    } else if (dRoner < 3.4) {
+      this.act4NearShop = 'roner';
+      this.interactPrompt = this.act4HasTurrets
+        ? isEn
+          ? 'Auto-Turrets ACTIVE!'
+          : 'Автоматические пулемёты активны!'
+        : this.act4Kills >= 100
+          ? isEn
+            ? '[E] Buy Auto-Turrets from Roner (100 kills — NOT spent!)'
+            : '[E] Взять у Roner Авто-пулемёты (100 килов — не тратятся!)'
+          : isEn
+            ? `Roner: Auto-Turrets need 100 kills (${this.act4Kills}/100)`
+            : `Roner: Пулемёты за 100 килов (${this.act4Kills}/100)`;
+    } else {
+      this.act4NearShop = null;
+      this.interactPrompt = null;
+    }
+
+    // Rocket flight (RPG)
+    if (this.act4RocketActive && this.act4VillageObjs) {
+      this.act4RocketLife -= dt;
+      this.act4RocketPos.addScaledVector(this.act4RocketDir, 36 * dt);
+      this.act4VillageObjs.rocketMesh.position.copy(this.act4RocketPos);
+
+      let shouldDetonate =
+        this.act4RocketLife <= 0 ||
+        this.act4RocketPos.y <= 0.35 ||
+        Math.abs(this.act4RocketPos.x) > ACT4_ARENA_HALF_W ||
+        Math.abs(this.act4RocketPos.z) > ACT4_ARENA_HALF_W;
+
+      if (!shouldDetonate) {
+        for (const c4 of this.act4Clones) {
+          if (!c4.active || c4.deadTimer > 0) continue;
+          if (Math.hypot(c4.x - this.act4RocketPos.x, c4.z - this.act4RocketPos.z) < 2.1) {
+            shouldDetonate = true;
+            break;
+          }
+        }
+      }
+      if (!shouldDetonate && this.act4Wave === 7 && this.act4BossHp > 0 && sasha.active) {
+        if (Math.hypot(sasha.x - this.act4RocketPos.x, sasha.z - this.act4RocketPos.z) < 2.8) {
+          shouldDetonate = true;
+        }
+      }
+      if (shouldDetonate) {
+        this.detonateAct4Rocket(this.act4RocketPos.x, this.act4RocketPos.y, this.act4RocketPos.z);
+        if (this.phase !== 'playing') return;
+      }
+    }
+
+    // Spawn RONER clones up to cap (24 concurrent out of pool 26)
+    if (this.act4Wave <= 6 && this.act4WaveToSpawn > 0) {
+      let activeNow = 0;
+      for (const c4 of this.act4Clones) {
+        if (c4.active) activeNow++;
+      }
+      this.act4WaveSpawnTimer -= dt;
+      if (activeNow < 24 && this.act4WaveSpawnTimer <= 0) {
+        const slot = this.act4Clones.find((c) => !c.active);
+        if (slot) {
+          const edge = Math.floor(Math.random() * 3);
+          const spawnX =
+            edge === 0 ? -31 + Math.random() * 62 : edge === 1 ? -32 : 32;
+          const spawnZ =
+            edge === 0 ? 31 : 8 + Math.random() * 24;
+          const safe = this.resolveAct4VillageCollision(spawnX, spawnZ, 0.55);
+          slot.active = true;
+          slot.x = safe.x;
+          slot.z = safe.z;
+          slot.maxHp = 80 + (this.act4Wave - 1) * 16;
+          slot.hp = slot.maxHp;
+          slot.deadTimer = 0;
+          slot.speed = Math.min(8.2, 4.3 + (this.act4Wave - 1) * 0.45 + Math.random() * 0.5);
+          slot.tauntTimer = 2.0 + Math.random() * 5.0;
+          slot.currentBubbleText = null;
+          slot.bubbleTimer = 0;
+          slot.rig.root.visible = true;
+          slot.rig.root.position.set(slot.x, 0, slot.z);
+          slot.rig.bodyPivot.rotation.x = 0;
+          slot.rig.bodyPivot.position.y = 0;
+          this.act4WaveToSpawn -= 1;
+          this.act4WaveSpawnTimer = Math.max(0.16, 0.42 - this.act4Wave * 0.04);
+        }
+      }
+    }
+
+    // Update Auto-Turrets (2 turrets firing at closest clone or Boss Sasha 67)
+    if (this.act4HasTurrets && this.act4VillageObjs) {
+      for (const tr of this.act4VillageObjs.turrets) {
+        if (tr.flashTimer > 0) {
+          tr.flashTimer -= dt;
+          if (tr.flashTimer <= 0) tr.muzzleFlash.visible = false;
+        }
+        if (tr.tracerTimer > 0) {
+          tr.tracerTimer -= dt;
+          if (tr.tracerTimer <= 0) tr.tracer.visible = false;
+        }
+        tr.cooldown -= dt;
+        const tx = tr.group.position.x;
+        const tz = tr.group.position.z;
+
+        let bestTarget: Act4CloneEntity | 'boss' | null = null;
+        let bestTx = 0;
+        let bestTy = 1.6;
+        let bestTz = 0;
+        let bestD = 38;
+
+        for (const c4 of this.act4Clones) {
+          if (!c4.active || c4.deadTimer > 0) continue;
+          const d = Math.hypot(c4.x - tx, c4.z - tz);
+          if (d < bestD) {
+            bestD = d;
+            bestTarget = c4;
+            bestTx = c4.x;
+            bestTy = 1.65;
+            bestTz = c4.z;
+          }
+        }
+        if (this.act4Wave === 7 && this.act4BossHp > 0 && sasha.active) {
+          const bd = Math.hypot(sasha.x - tx, sasha.z - tz);
+          if (bd < 48 && (!bestTarget || bd < bestD + 6)) {
+            bestTarget = 'boss';
+            bestTx = sasha.x;
+            bestTy = 3.6;
+            bestTz = sasha.z;
+          }
+        }
+
+        if (bestTarget) {
+          tr.headPivot.rotation.y = Math.atan2(bestTx - tx, bestTz - tz);
+          if (tr.cooldown <= 0) {
+            tr.cooldown = 0.22;
+            tr.flashTimer = 0.06;
+            tr.tracerTimer = 0.08;
+            tr.muzzleFlash.visible = true;
+            this.audio.playTurretShot();
+
+            _vec3.set(tx, 1.5, tz);
+            _vec3b.set(bestTx, bestTy, bestTz);
+            const dist = _vec3.distanceTo(_vec3b);
+            tr.tracer.position.copy(_vec3).lerp(_vec3b, 0.5);
+            tr.tracer.scale.set(1, 1, dist);
+            tr.tracer.lookAt(_vec3b);
+            tr.tracer.visible = true;
+
+            this.damageAct4Enemy(bestTarget, 42, false);
+            if (this.phase !== 'playing') return;
+          }
+        }
+      }
+    }
+
+    // Update RONER clones
+    let aliveClones = 0;
+    for (const c4 of this.act4Clones) {
+      if (!c4.active) continue;
+      if (c4.bubbleTimer > 0) {
+        c4.bubbleTimer -= dt;
+        if (c4.bubbleTimer <= 0) c4.currentBubbleText = null;
+      }
+      if (c4.deadTimer > 0) {
+        c4.deadTimer -= dt;
+        animateRobloxCharacter(c4.rig, 0, dt, elapsed, false, true, true);
+        if (c4.deadTimer <= 0) {
+          c4.active = false;
+          c4.rig.root.visible = false;
+          c4.currentBubbleText = null;
+        }
+        continue;
+      }
+      aliveClones++;
+
+      const dx = this.playerX - c4.x;
+      const dz = this.playerZ - c4.z;
+      const dist = Math.hypot(dx, dz) || 1;
+      c4.x += (dx / dist) * c4.speed * dt;
+      c4.z += (dz / dist) * c4.speed * dt;
+      const res = this.resolveAct4VillageCollision(c4.x, c4.z, 0.5);
+      c4.x = res.x;
+      c4.z = res.z;
+      c4.yaw = Math.atan2(dx, dz);
+      c4.rig.root.position.set(c4.x, 0, c4.z);
+      c4.rig.root.rotation.y = c4.yaw;
+      animateRobloxCharacter(c4.rig, 1.15, dt, elapsed, false, false, true);
+
+      c4.tauntTimer -= dt;
+      if (c4.tauntTimer <= 0) {
+        c4.tauntTimer = 6.0 + Math.random() * 5.0;
+        const phrase = pickRandomChaserPhrase(this.settings);
+        c4.currentBubbleText = phrase.display;
+        c4.bubbleTimer = 1.8;
+      }
+
+      if (dist < 1.5 && this.playerY < 1.3 && this.act4InvulnTimer <= 0) {
+        this.act4Hp = Math.max(0, this.act4Hp - 1);
+        this.act4InvulnTimer = 1.25;
+        this.cameraShake = 0.45;
+        this.audio.playPlayerHit();
+        if (this.act4Hp <= 0) {
+          this.triggerCaught(c4);
+          return;
+        }
+        c4.x -= (dx / dist) * 3.0;
+        c4.z -= (dz / dist) * 3.0;
+        this.pushHud(true);
+      }
+    }
+
+    // Update Wave 7 Boss Sasha 67!!!!!! (HP 11488, lightning eyes, pumps arms, shouts 67!!)
+    if (this.act4Wave === 7 && this.act4BossHp > 0 && sasha.active) {
+      const dx = this.playerX - sasha.x;
+      const dz = this.playerZ - sasha.z;
+      const dist = Math.hypot(dx, dz) || 1;
+      const bossSpeed = 4.9;
+      sasha.x += (dx / dist) * bossSpeed * dt;
+      sasha.z += (dz / dist) * bossSpeed * dt;
+      const res = this.resolveAct4VillageCollision(sasha.x, sasha.z, 1.3);
+      sasha.x = res.x;
+      sasha.z = res.z;
+      sasha.yaw = Math.atan2(dx, dz);
+      sasha.rig.root.position.set(sasha.x, 0, sasha.z);
+      sasha.rig.root.rotation.y = sasha.yaw;
+      animateRobloxCharacter(sasha.rig, 1.1, dt, elapsed, false, false, true);
+      // Boss Sasha 67 vigorously pumps arms up and down ("качает руками")!
+      const pump = Math.sin(elapsed * 11.5);
+      sasha.rig.leftArm.rotation.x = -1.6 + pump * 0.95;
+      sasha.rig.rightArm.rotation.x = -1.6 - pump * 0.95;
+
+      this.act4BossRoarTimer -= dt;
+      if (this.act4BossRoarTimer <= 0) {
+        this.act4BossRoarTimer = 2.4;
+        sasha.currentBubbleText = '67!!';
+        sasha.bubbleTimer = 1.9;
+        sasha.isScream = true;
+        this.audio.playBoss67Roar();
+      }
+
+      if (dist < 2.75 && this.playerY < 1.8 && this.act4InvulnTimer <= 0) {
+        this.act4Hp = Math.max(0, this.act4Hp - 1);
+        this.act4InvulnTimer = 1.35;
+        this.cameraShake = 0.62;
+        this.audio.playPlayerHit();
+        if (this.act4Hp <= 0) {
+          this.triggerCaught(sasha);
+          return;
+        }
+        sasha.x -= (dx / dist) * 3.8;
+        sasha.z -= (dz / dist) * 3.8;
+        this.pushHud(true);
+      }
+    }
+
+    // Advance wave when all clones spawned and defeated
+    if (this.act4Wave <= 6 && this.act4WaveToSpawn <= 0 && aliveClones === 0) {
+      this.act4WaveClearedPause += dt;
+      if (this.act4WaveClearedPause >= 1.6) {
+        this.startAct4Wave(this.act4Wave + 1);
+      }
+    }
+  }
+
+  private startAct4OutroCutscene(): void {
+    this.phase = 'act4_outro_cutscene';
+    this.cutsceneTimer = 0;
+    this.cutsceneStage = -1;
+    this.isPrimaryFireHeld = false;
+    this.heldKeys.clear();
+    this.interactPrompt = null;
+    this.act4NearShop = null;
+    this.act4RocketActive = false;
+    this.act4FpWeapons.group.visible = false;
+    this.act4FpWeapons.muzzleFlash.visible = false;
+    this.act4FpWeapons.flameJet.visible = false;
+    this.fpSniper.group.visible = false;
+    if (document.pointerLockElement === this.renderer.domElement) {
+      document.exitPointerLock?.();
+    }
+
+    for (const c4 of this.act4Clones) {
+      c4.active = false;
+      c4.rig.root.visible = false;
+      c4.currentBubbleText = null;
+    }
+
+    if (this.act4VillageObjs) {
+      this.act4VillageObjs.tableGroup.visible = true;
+      this.act4VillageObjs.sashaShopGlow.visible = false;
+      this.act4VillageObjs.ronerShopGlow.visible = false;
+      this.act4VillageObjs.rocketMesh.visible = false;
+      for (const tr of this.act4VillageObjs.turrets) {
+        tr.muzzleFlash.visible = false;
+        tr.tracer.visible = false;
+      }
+    }
+
+    // Reset Sasha from Boss 67 back to normal size with visor for the Mivina & tea table!
+    this.act4Stage = 'walk_to_house';
+    this.syncAct2EnemyAppearance();
+
+    // Seat Nikita, Sasha (visor), and Roner around ACT4_TABLE_POS (0, 0, -7.5)
+    this.playerX = ACT4_TABLE_POS.x;
+    this.playerZ = ACT4_TABLE_POS.z + 1.45;
+    this.playerY = 0;
+    this.playerRig.root.visible = true;
+    this.playerRig.root.position.set(this.playerX, 0, this.playerZ);
+    this.playerRig.root.rotation.y = Math.PI;
+    this.tpFlashlight.group.visible = false;
+
+    const roner = this.chasers[0];
+    roner.active = true;
+    roner.x = ACT4_TABLE_POS.x + 1.45;
+    roner.z = ACT4_TABLE_POS.z - 0.1;
+    roner.rig.root.visible = true;
+    roner.rig.root.position.set(roner.x, 0, roner.z);
+    roner.rig.root.rotation.y = -Math.PI / 2;
+    roner.currentBubbleText = null;
+
+    const sasha = this.chasers[1];
+    sasha.active = true;
+    sasha.x = ACT4_TABLE_POS.x - 1.45;
+    sasha.z = ACT4_TABLE_POS.z - 0.1;
+    sasha.rig.root.visible = true;
+    sasha.rig.root.position.set(sasha.x, 0, sasha.z);
+    sasha.rig.root.rotation.y = Math.PI / 2;
+    sasha.currentBubbleText = null;
+    sasha.isScream = false;
+
+    this.pushHud(true);
+  }
+
+  private updateAct4OutroCutscene(dt: number, elapsed: number): void {
+    this.cutsceneTimer += dt;
+    const t = this.cutsceneTimer;
+    if (this.cutsceneStage < 0) {
+      this.cutsceneStage = 0;
+      const line = getCutsceneLine('act4_outro_0', this.settings);
+      this.cutsceneSubtitle = {
+        speaker: this.settings.language === 'en' ? 'nikitys6666, Sasha & Roner' : 'nikitys6666, Саша и Roner',
+        text: line.display,
+        tone: 'nikita',
+      };
+      this.playerBubbleText = line.display;
+      this.audio.playDialogueLine(line.speech, 1.02, line.hasCensorBeep);
+    }
+
+    animateRobloxSeated(this.playerRig, elapsed, 0);
+    animateRobloxSeated(this.chasers[1].rig, elapsed, 1.7);
+    animateRobloxSeated(this.chasers[0].rig, elapsed, 3.3);
+
+    if (t >= 6.4) {
+      this.finishAct4Victory();
+    }
+  }
+
+  private finishAct4Victory(): void {
+    this.phase = 'victory';
+    this.cutsceneSubtitle = null;
+    this.playerBubbleText = null;
+    this.act4FpWeapons.group.visible = false;
+    this.act4FpWeapons.muzzleFlash.visible = false;
+    this.act4FpWeapons.flameJet.visible = false;
+    if (this.act4VillageObjs) {
+      this.act4VillageObjs.tableGroup.visible = true;
+      this.act4VillageObjs.explosionSphere.visible = false;
+      this.act4VillageObjs.explosionLight.intensity = 0;
+    }
+
+    const unlocked = unlockSingleAchievement(this.achievements, 'act4_jojo');
+    this.emitAchievementResult(unlocked);
+
+    this.audio.playVictoryFanfare();
+    this.pushHud(true);
+  }
+
   private resolveSniperArenaCollision(
     x: number,
     z: number,
@@ -6968,21 +8619,25 @@ export class ForestGameEngine {
     }
   }
 
-  private triggerCaught(killer: ChaserEntity | SniperCloneEntity): void {
+  private triggerCaught(killer: ChaserEntity | SniperCloneEntity | Act4CloneEntity): void {
     this.phase = 'caught';
     this.caughtTimer = 2.35;
     this.hitstopTimer = 0.07;
     this.cameraShake = 0.65;
-    this.killerId = killer.id;
+    this.killerId = 'id' in killer ? killer.id : 'roner';
     this.killerName = killer.name;
     this.isHidingInLocker = false;
     this.hiddenLockerId = null;
+    this.isPrimaryFireHeld = false;
     this.heldKeys.clear();
     this.playerRig.root.visible = true;
     this.fpFlashlight.group.visible = false;
     this.sachetHand.group.visible = false;
     this.fpSniper.group.visible = false;
     this.fpSniper.muzzleFlash.visible = false;
+    this.act4FpWeapons.group.visible = false;
+    this.act4FpWeapons.muzzleFlash.visible = false;
+    this.act4FpWeapons.flameJet.visible = false;
     this.tpFlashlight.group.visible = false;
 
     if (document.pointerLockElement === this.renderer.domElement) {
@@ -7006,7 +8661,8 @@ export class ForestGameEngine {
     const flatGround =
       this.activeWorldType === 'factory' ||
       this.activeWorldType === 'sniper_arena' ||
-      this.activeWorldType === 'act3_park';
+      this.activeWorldType === 'act3_park' ||
+      this.activeWorldType === 'act4_village';
 
     for (const c of this.chasers) {
       if (!c.active) continue;
@@ -7049,6 +8705,20 @@ export class ForestGameEngine {
       }
     }
 
+    if (this.mode === 'story_act4') {
+      for (const c4 of this.act4Clones) {
+        if (!c4.active || c4.deadTimer > 0) continue;
+        if (c4.name === this.killerName) {
+          const jumpY = Math.abs(Math.sin(elapsed * 14)) * 0.45;
+          c4.rig.root.position.set(c4.x, jumpY, c4.z);
+          c4.rig.leftArm.rotation.x = -2.6;
+          c4.rig.rightArm.rotation.x = -2.6;
+        } else {
+          animateRobloxCharacter(c4.rig, 0, dt, elapsed, false, false, true);
+        }
+      }
+    }
+
     if (this.caughtTimer <= 0) {
       this.phase = 'gameover';
       this.pushHud(true);
@@ -7057,6 +8727,18 @@ export class ForestGameEngine {
 
   private updateCamera(dt: number, elapsed: number): void {
     if (this.phase === 'title') {
+      if (this.mode === 'story_act4') {
+        const orbitAng = elapsed * 0.16;
+        _camDesiredPos.set(
+          Math.sin(orbitAng) * 9.8,
+          4.0,
+          Math.cos(orbitAng) * 9.8 - 8.2
+        );
+        this.camera.position.lerp(_camDesiredPos, Math.min(1, dt * 4));
+        _camLookTarget.set(0, 1.8, -11.5);
+        this.camera.lookAt(_camLookTarget);
+        return;
+      }
       if (this.mode === 'story_act3') {
         const orbitAng = elapsed * 0.16;
         _camDesiredPos.set(
@@ -7101,6 +8783,40 @@ export class ForestGameEngine {
       );
       this.camera.position.lerp(_camDesiredPos, Math.min(1, dt * 4));
       _camLookTarget.set(0, this.playerY + 1.5, -3.2);
+      this.camera.lookAt(_camLookTarget);
+      return;
+    }
+
+    if (this.phase === 'act4_intro_cutscene') {
+      if (this.cutsceneStage <= 0) {
+        _camDesiredPos.set(4.5, 2.7, this.playerZ - 5.2);
+        _camLookTarget.set(0, 1.5, this.playerZ);
+      } else if (this.cutsceneStage <= 3) {
+        _camDesiredPos.set(-2.6, 2.35, 0.8);
+        _camLookTarget.set(1.6, 1.6, -3.6);
+      } else {
+        _camDesiredPos.set(1.8, 3.3, 4.2);
+        const gx = this.act4VillageObjs?.giornoGroup.position.x ?? 0;
+        const gz = this.act4VillageObjs?.giornoGroup.position.z ?? -4.5;
+        _camLookTarget.set(gx, 1.5, gz);
+      }
+      this.camera.position.lerp(_camDesiredPos, Math.min(1, dt * 4.5));
+      this.camera.lookAt(_camLookTarget);
+      return;
+    }
+
+    if (
+      this.phase === 'act4_outro_cutscene' ||
+      (this.phase === 'victory' && this.mode === 'story_act4')
+    ) {
+      const orbitAng = elapsed * 0.25;
+      _camDesiredPos.set(
+        ACT4_TABLE_POS.x + Math.sin(orbitAng) * 4.4,
+        2.5,
+        ACT4_TABLE_POS.z + Math.cos(orbitAng) * 4.4 + 0.8
+      );
+      this.camera.position.lerp(_camDesiredPos, Math.min(1, dt * 3.8));
+      _camLookTarget.set(ACT4_TABLE_POS.x, 1.25, ACT4_TABLE_POS.z);
       this.camera.lookAt(_camLookTarget);
       return;
     }
@@ -7255,14 +8971,16 @@ export class ForestGameEngine {
       const killerChaser = this.chasers.find((c) => c.id === this.killerId);
       const killerClone =
         this.sniperClones.find((sc) => sc.name === this.killerName && sc.active) ??
-        this.act3RonerArmy.find((rc) => rc.name === this.killerName && rc.active);
+        this.act3RonerArmy.find((rc) => rc.name === this.killerName && rc.active) ??
+        this.act4Clones.find((c4) => c4.name === this.killerName && c4.active);
       const killer = killerClone ?? killerChaser;
       const focusX = killer ? (killer.x + this.playerX) * 0.5 : this.playerX;
       const focusZ = killer ? (killer.z + this.playerZ) * 0.5 : this.playerZ;
       const flatGround =
         this.activeWorldType === 'factory' ||
         this.activeWorldType === 'sniper_arena' ||
-        this.activeWorldType === 'act3_park';
+        this.activeWorldType === 'act3_park' ||
+        this.activeWorldType === 'act4_village';
       const focusY = flatGround ? 0 : groundHeightAt(focusX, focusZ);
 
       _camDesiredPos.set(
@@ -7305,6 +9023,7 @@ export class ForestGameEngine {
       this.mode === 'story_act1' ||
       this.mode === 'story_act2' ||
       this.mode === 'story_act3' ||
+      this.mode === 'story_act4' ||
       this.mode === 'fnaf_epta' ||
       this.mode === 'sniper_minigame';
     if (isFP) {
@@ -7453,6 +9172,49 @@ export class ForestGameEngine {
       });
     }
 
+    if (this.act4GiornoText && this.act4VillageObjs?.giornoGroup.visible) {
+      const gpos = this.act4VillageObjs.giornoGroup.position;
+      _projVec.set(gpos.x, gpos.y + 3.6, gpos.z);
+      _projVec.project(this.camera);
+      if (_projVec.z <= 1) {
+        bubbles.push({
+          id: `giorno-${this.act4GiornoText}`,
+          speaker: this.settings.language === 'en' ? 'Giorno Giovanna' : 'Джорно Джавано',
+          speakerId: 'sasha',
+          text: this.act4GiornoText,
+          screenX: THREE.MathUtils.clamp(((_projVec.x + 1) / 2) * w, 130, w - 130),
+          screenY: THREE.MathUtils.clamp(((-_projVec.y + 1) / 2) * h, 72, h - 120),
+          visible: true,
+          isScream: false,
+          scale: 1,
+        });
+      }
+    }
+
+    if (this.mode === 'story_act4') {
+      for (const c4 of this.act4Clones) {
+        if (!c4.active || !c4.rig.root.visible || !c4.currentBubbleText) continue;
+        const pos = c4.rig.root.position;
+        _projVec.set(pos.x, pos.y + 3.45, pos.z);
+        _projVec.project(this.camera);
+        if (_projVec.z > 1) continue;
+        const sx = ((_projVec.x + 1) / 2) * w;
+        const sy = ((-_projVec.y + 1) / 2) * h;
+        const dist = _vec3.set(pos.x, pos.y, pos.z).distanceTo(this.camera.position);
+        bubbles.push({
+          id: `${c4.name}-${c4.currentBubbleText}`,
+          speaker: c4.name,
+          speakerId: 'roner',
+          text: c4.currentBubbleText,
+          screenX: THREE.MathUtils.clamp(sx, 110, w - 110),
+          screenY: THREE.MathUtils.clamp(sy, 72, h - 85),
+          visible: true,
+          isScream: false,
+          scale: THREE.MathUtils.clamp(1.15 - dist * 0.015, 0.78, 1.08),
+        });
+      }
+    }
+
     if (this.mode === 'sniper_minigame' || this.mode === 'story_act3') {
       const pool = this.mode === 'story_act3' ? this.act3RonerArmy : this.sniperClones;
       for (const sc of pool) {
@@ -7510,11 +9272,24 @@ export class ForestGameEngine {
 
     let nearestDist = 999;
     let act3RonerWaveAlive = 0;
+    let act4EnemiesLeft = 0;
     if (this.mode === 'sniper_minigame') {
       for (const sc of this.sniperClones) {
         if (!sc.active || sc.deadTimer > 0) continue;
         const d = Math.hypot(sc.x - this.playerX, sc.z - this.playerZ);
         if (d < nearestDist) nearestDist = d;
+      }
+    } else if (this.mode === 'story_act4') {
+      for (const c4 of this.act4Clones) {
+        if (!c4.active || c4.deadTimer > 0) continue;
+        act4EnemiesLeft++;
+        const d = Math.hypot(c4.x - this.playerX, c4.z - this.playerZ);
+        if (d < nearestDist) nearestDist = d;
+      }
+      act4EnemiesLeft += this.act4Wave <= 6 ? this.act4WaveToSpawn : this.act4BossHp > 0 ? 1 : 0;
+      if (this.act4Wave === 7 && this.act4BossHp > 0 && this.chasers[1]?.active) {
+        const bd = Math.hypot(this.chasers[1].x - this.playerX, this.chasers[1].z - this.playerZ);
+        if (bd < nearestDist) nearestDist = bd;
       }
     } else {
       for (const c of this.chasers) {
@@ -7540,6 +9315,7 @@ export class ForestGameEngine {
     const isStory = this.mode === 'story_act1';
     const isAct2 = this.mode === 'story_act2';
     const isAct3 = this.mode === 'story_act3';
+    const isAct4 = this.mode === 'story_act4';
     const isFnaf = this.mode === 'fnaf_epta';
     const isFactoryMode = isAct2 || isFnaf;
     const endX = storyPathCenterX(STORY_END_Z);
@@ -7579,8 +9355,14 @@ export class ForestGameEngine {
       flashlightStuns: this.flashlightStuns,
       nearestChaserDist: Math.round(nearestDist * 10) / 10,
       distanceToGate: gateDist,
-      ronerSpawned: isAct3 ? act3RonerWaveAlive > 0 : (this.chasers[0]?.active ?? false),
-      sashaSpawned: this.chasers[1]?.active ?? false,
+      ronerSpawned: isAct3
+        ? act3RonerWaveAlive > 0
+        : isAct4
+          ? this.act4Stage === 'battle' && act4EnemiesLeft > 0
+          : (this.chasers[0]?.active ?? false),
+      sashaSpawned: isAct4
+        ? this.act4Wave === 7 && this.act4BossHp > 0
+        : (this.chasers[1]?.active ?? false),
       killerName: this.killerName,
       killerId: this.killerId,
       activeMushroomsOnMap: this.mushrooms.length,
@@ -7643,6 +9425,18 @@ export class ForestGameEngine {
       act3HasSniper: this.act3HasSniper,
       act3Hp: this.act3Hp,
       act3MaxHp: this.act3MaxHp,
+      act4Stage: this.act4Stage,
+      act4Kills: this.act4Kills,
+      act4Wave: this.act4Wave,
+      act4MaxWaves: ACT4_WAVE_COUNTS.length,
+      act4WaveEnemiesLeft: act4EnemiesLeft,
+      act4ActiveWeapon: this.act4ActiveWeapon,
+      act4UnlockedWeapons: this.act4UnlockedWeapons,
+      act4HasTurrets: this.act4HasTurrets,
+      act4BossHp: this.act4BossHp,
+      act4BossMaxHp: ACT4_BOSS_MAX_HP,
+      act4Hp: this.act4Hp,
+      act4MaxHp: this.act4MaxHp,
       fnafMivinasTotal: this.fnafMivinasTotal,
       fnafBatch: this.fnafBatch,
       bestFnafMivinas: this.bestFnafMivinas,
@@ -7704,12 +9498,20 @@ export class ForestGameEngine {
         this.updateAct3IntroCutscene(dt, elapsed);
       } else if (this.phase === 'act3_outro_cutscene') {
         this.updateAct3OutroCutscene(dt, elapsed);
+      } else if (this.phase === 'act4_intro_cutscene') {
+        this.updateAct4IntroCutscene(dt, elapsed);
+      } else if (this.phase === 'act4_outro_cutscene') {
+        this.updateAct4OutroCutscene(dt, elapsed);
       } else if (this.phase === 'act3_secret' && this.malinkaObjs) {
         this.malinkaObjs.neonSignMat.emissiveIntensity = 1.45 + Math.sin(elapsed * 3.0) * 0.35;
       } else if (this.phase === 'playing') {
         this.updatePlaying(dt, elapsed);
       } else if (this.phase === 'caught') {
         this.updateCaught(dt, elapsed);
+      } else if (this.phase === 'victory' && this.mode === 'story_act4') {
+        animateRobloxSeated(this.playerRig, elapsed, 0);
+        animateRobloxSeated(this.chasers[1].rig, elapsed, 1.7);
+        animateRobloxSeated(this.chasers[0].rig, elapsed, 3.3);
       } else if (this.phase === 'title') {
         animateRobloxCharacter(this.playerRig, 0, dt, elapsed, false, false, false);
         for (const c of this.chasers) {
@@ -7768,11 +9570,25 @@ export class ForestGameEngine {
       this.toggleFlashlight();
     }
 
+    if (e.code === 'KeyU' && !e.repeat && this.phase === 'playing' && this.mode === 'story_act4') {
+      this.triggerAct4UziSecret();
+    }
+
+    if (!e.repeat && this.phase === 'playing' && this.mode === 'story_act4') {
+      const slotKeys = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6'];
+      const slotIdx = slotKeys.indexOf(e.code);
+      if (slotIdx >= 0 && ACT4_WEAPON_ORDER[slotIdx]) {
+        this.selectAct4Weapon(ACT4_WEAPON_ORDER[slotIdx]);
+      }
+    }
+
     if (e.code === 'KeyE' && !e.repeat && this.phase === 'playing') {
       if (this.mode === 'story_act2' || this.mode === 'fnaf_epta') {
         this.interactFactory();
       } else if (this.mode === 'story_act3') {
         this.interactAct3Park();
+      } else if (this.mode === 'story_act4') {
+        this.interactAct4Village();
       } else if (this.mode === 'sniper_minigame') {
         this.fireSniperShot();
       }
@@ -7790,6 +9606,8 @@ export class ForestGameEngine {
         this.phase === 'act2_outro_cutscene' ||
         this.phase === 'act3_intro_cutscene' ||
         this.phase === 'act3_outro_cutscene' ||
+        this.phase === 'act4_intro_cutscene' ||
+        this.phase === 'act4_outro_cutscene' ||
         this.phase === 'act3_secret'
       ) {
         this.skipCutscene();
@@ -7811,6 +9629,8 @@ export class ForestGameEngine {
         this.phase === 'act2_outro_cutscene' ||
         this.phase === 'act3_intro_cutscene' ||
         this.phase === 'act3_outro_cutscene' ||
+        this.phase === 'act4_intro_cutscene' ||
+        this.phase === 'act4_outro_cutscene' ||
         this.phase === 'act3_secret'
       ) {
         this.skipCutscene();
@@ -7841,6 +9661,7 @@ export class ForestGameEngine {
   private onWindowBlur = () => {
     this.heldKeys.clear();
     this.isDraggingCam = false;
+    this.isPrimaryFireHeld = false;
   };
 
   private onPointerDown = (e: PointerEvent) => {
@@ -7857,6 +9678,7 @@ export class ForestGameEngine {
       this.mode === 'story_act1' ||
       this.mode === 'story_act2' ||
       this.mode === 'story_act3' ||
+      this.mode === 'story_act4' ||
       this.mode === 'fnaf_epta' ||
       this.mode === 'sniper_minigame';
     if (
@@ -7875,10 +9697,17 @@ export class ForestGameEngine {
     }
 
     if (e.button === 0) {
+      this.isPrimaryFireHeld = true;
       if (this.mode === 'story_act2' || this.mode === 'fnaf_epta') {
         this.interactFactory();
       } else if (this.mode === 'story_act3') {
         this.interactAct3Park();
+      } else if (this.mode === 'story_act4') {
+        if (this.act4Stage === 'walk_to_house') {
+          this.interactAct4Village();
+        } else {
+          this.fireAct4Weapon();
+        }
       } else if (this.mode === 'sniper_minigame') {
         this.fireSniperShot();
       }
@@ -7896,6 +9725,7 @@ export class ForestGameEngine {
       this.mode === 'story_act1' ||
       this.mode === 'story_act2' ||
       this.mode === 'story_act3' ||
+      this.mode === 'story_act4' ||
       this.mode === 'fnaf_epta' ||
       this.mode === 'sniper_minigame';
 
@@ -7938,6 +9768,7 @@ export class ForestGameEngine {
 
   private onPointerUp = () => {
     this.isDraggingCam = false;
+    this.isPrimaryFireHeld = false;
   };
 
   private onContextMenu = (e: MouseEvent) => {
@@ -8002,6 +9833,11 @@ export class ForestGameEngine {
     }
     if (this.act3ParkObjs) {
       for (const d of this.act3ParkObjs.disposables) {
+        d.dispose();
+      }
+    }
+    if (this.act4VillageObjs) {
+      for (const d of this.act4VillageObjs.disposables) {
         d.dispose();
       }
     }

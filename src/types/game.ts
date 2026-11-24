@@ -11,6 +11,8 @@ export type GamePhase =
   | 'act3_secret'
   | 'act3_intro_cutscene'
   | 'act3_outro_cutscene'
+  | 'act4_intro_cutscene'
+  | 'act4_outro_cutscene'
   | 'victory'
   | 'paused'
   | 'gameover';
@@ -19,10 +21,19 @@ export type GameMode =
   | 'story_act1'
   | 'story_act2'
   | 'story_act3'
+  | 'story_act4'
   | 'first_person'
   | 'hardcore_third_person'
   | 'fnaf_epta'
   | 'sniper_minigame';
+
+export type Act4WeaponId =
+  | 'pistol'
+  | 'uzi'
+  | 'ak47'
+  | 'sniper'
+  | 'rpg'
+  | 'flamethrower';
 
 export type ChaserId = 'roner' | 'sasha';
 
@@ -38,7 +49,9 @@ export type AchievementId =
   | 'mush_100'
   | 'mush_200'
   | 'sniper_100'
-  | 'secret_malinka';
+  | 'secret_malinka'
+  | 'act4_shahediki'
+  | 'act4_jojo';
 
 export interface AchievementDef {
   id: AchievementId;
@@ -144,6 +157,19 @@ export interface HudSnapshot {
   act3HasSniper: boolean;
   act3Hp: number;
   act3MaxHp: number;
+  // Act 4 JoJo Village defense HUD state
+  act4Stage: 'walk_to_house' | 'battle';
+  act4Kills: number;
+  act4Wave: number;
+  act4MaxWaves: number;
+  act4WaveEnemiesLeft: number;
+  act4ActiveWeapon: Act4WeaponId;
+  act4UnlockedWeapons: Act4WeaponId[];
+  act4HasTurrets: boolean;
+  act4BossHp: number;
+  act4BossMaxHp: number;
+  act4Hp: number;
+  act4MaxHp: number;
   // Minigame stats
   fnafMivinasTotal: number;
   fnafBatch: number;

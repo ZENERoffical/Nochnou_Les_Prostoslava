@@ -6,6 +6,8 @@ export const ACHIEVEMENT_DEFS: AchievementDef[] = [
   { id: 'act1_clear' },
   { id: 'act2_clear' },
   { id: 'act3_malinka' },
+  { id: 'act4_jojo' },
+  { id: 'act4_shahediki', secret: true },
   { id: 'fnaf_50', statKey: 'totalFnafMivinas', target: 50 },
   { id: 'fnaf_100', statKey: 'totalFnafMivinas', target: 100 },
   { id: 'mush_50', statKey: 'totalMushrooms', target: 50 },

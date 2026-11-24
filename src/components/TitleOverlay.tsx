@@ -8,6 +8,7 @@ import {
   Gamepad2,
   Play,
   Settings,
+  Sparkles,
   Trees,
   Trophy,
   Volume2,
@@ -47,33 +48,24 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
   onStart,
 }) => {
   const t = getUiText(settings.language);
+  const isStoryMode =
+    mode === 'story_act1' ||
+    mode === 'story_act2' ||
+    mode === 'story_act3' ||
+    mode === 'story_act4';
   const [activeTab, setActiveTab] = useState<'story' | 'minigames'>(
-    mode === 'story_act1' || mode === 'story_act2' || mode === 'story_act3'
-      ? 'story'
-      : 'minigames'
+    isStoryMode ? 'story' : 'minigames'
   );
 
   useEffect(() => {
-    setActiveTab(
-      mode === 'story_act1' || mode === 'story_act2' || mode === 'story_act3'
-        ? 'story'
-        : 'minigames'
-    );
-  }, [mode]);
+    setActiveTab(isStoryMode ? 'story' : 'minigames');
+  }, [isStoryMode]);
 
   const handleSwitchTab = (tab: 'story' | 'minigames') => {
     setActiveTab(tab);
-    if (
-      tab === 'story' &&
-      mode !== 'story_act1' &&
-      mode !== 'story_act2' &&
-      mode !== 'story_act3'
-    ) {
+    if (tab === 'story' && !isStoryMode) {
       onSelectMode('story_act1');
-    } else if (
-      tab === 'minigames' &&
-      (mode === 'story_act1' || mode === 'story_act2' || mode === 'story_act3')
-    ) {
+    } else if (tab === 'minigames' && isStoryMode) {
       onSelectMode('fnaf_epta');
     }
   };
@@ -92,13 +84,15 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
         ? t.descStory2
         : mode === 'story_act3'
           ? t.descStory3
-          : mode === 'fnaf_epta'
-            ? t.descFnaf
-            : mode === 'sniper_minigame'
-              ? t.descSniper
-              : mode === 'first_person'
-                ? t.descFP
-                : t.descHardcore;
+          : mode === 'story_act4'
+            ? t.descStory4
+            : mode === 'fnaf_epta'
+              ? t.descFnaf
+              : mode === 'sniper_minigame'
+                ? t.descSniper
+                : mode === 'first_person'
+                  ? t.descFP
+                  : t.descHardcore;
 
   return (
     <div className="pointer-events-none fixed inset-0 z-30 flex flex-col justify-between p-4 sm:p-7">
@@ -228,18 +222,18 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
           </div>
 
           {activeTab === 'story' ? (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <button
                 type="button"
                 onClick={() => onSelectMode('story_act1')}
-                className={`flex flex-col items-center justify-center rounded-xl border px-3 py-2.5 text-xs font-extrabold transition-all cursor-pointer ${
+                className={`flex flex-col items-center justify-center rounded-xl border px-2 py-2 text-xs font-extrabold transition-all cursor-pointer ${
                   mode === 'story_act1'
                     ? 'border-amber-400 bg-amber-500/20 text-amber-200 shadow-inner'
                     : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
                 }`}
               >
-                <span className="flex items-center gap-1.5">
-                  <BookOpen className="h-4 w-4 shrink-0 text-amber-300" />
+                <span className="flex items-center gap-1">
+                  <BookOpen className="h-3.5 w-3.5 shrink-0 text-amber-300" />
                   <span>{t.modeStory}</span>
                 </span>
                 <span className="text-[10px] font-bold text-amber-300/80">
@@ -250,14 +244,14 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectMode('story_act2')}
-                className={`flex flex-col items-center justify-center rounded-xl border px-3 py-2.5 text-xs font-extrabold transition-all cursor-pointer ${
+                className={`flex flex-col items-center justify-center rounded-xl border px-2 py-2 text-xs font-extrabold transition-all cursor-pointer ${
                   mode === 'story_act2'
                     ? 'border-sky-400 bg-sky-500/20 text-sky-200 shadow-inner'
                     : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
                 }`}
               >
-                <span className="flex items-center gap-1.5">
-                  <Factory className="h-4 w-4 shrink-0 text-sky-300" />
+                <span className="flex items-center gap-1">
+                  <Factory className="h-3.5 w-3.5 shrink-0 text-sky-300" />
                   <span>{t.modeStory2}</span>
                 </span>
                 <span className="text-[10px] font-bold text-sky-300/80">
@@ -268,18 +262,36 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectMode('story_act3')}
-                className={`flex flex-col items-center justify-center rounded-xl border px-3 py-2.5 text-xs font-extrabold transition-all cursor-pointer ${
+                className={`flex flex-col items-center justify-center rounded-xl border px-2 py-2 text-xs font-extrabold transition-all cursor-pointer ${
                   mode === 'story_act3'
                     ? 'border-pink-400 bg-pink-500/20 text-pink-200 shadow-inner'
                     : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
                 }`}
               >
-                <span className="flex items-center gap-1.5">
-                  <Trees className="h-4 w-4 shrink-0 text-pink-300" />
+                <span className="flex items-center gap-1">
+                  <Trees className="h-3.5 w-3.5 shrink-0 text-pink-300" />
                   <span>{t.modeStory3}</span>
                 </span>
                 <span className="text-[10px] font-bold text-pink-300/80">
                   {t.modeAct3Sub}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onSelectMode('story_act4')}
+                className={`flex flex-col items-center justify-center rounded-xl border px-2 py-2 text-xs font-extrabold transition-all cursor-pointer ${
+                  mode === 'story_act4'
+                    ? 'border-purple-400 bg-purple-500/25 text-purple-200 shadow-inner'
+                    : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                }`}
+              >
+                <span className="flex items-center gap-1">
+                  <Sparkles className="h-3.5 w-3.5 shrink-0 text-purple-300" />
+                  <span>{t.modeStory4}</span>
+                </span>
+                <span className="text-[10px] font-bold text-purple-300/80">
+                  {t.modeAct4Sub}
                 </span>
               </button>
             </div>
@@ -395,13 +407,15 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
                     ? 'bg-sky-400 hover:bg-sky-300'
                     : mode === 'story_act3'
                       ? 'bg-pink-400 hover:bg-pink-300'
-                      : mode === 'fnaf_epta'
-                        ? 'bg-orange-400 hover:bg-orange-300'
-                        : mode === 'sniper_minigame'
-                          ? 'bg-lime-400 hover:bg-lime-300'
-                          : mode === 'story_act1'
-                            ? 'bg-amber-400 hover:bg-amber-300'
-                            : 'bg-emerald-500 hover:bg-emerald-400'
+                      : mode === 'story_act4'
+                        ? 'bg-purple-400 hover:bg-purple-300'
+                        : mode === 'fnaf_epta'
+                          ? 'bg-orange-400 hover:bg-orange-300'
+                          : mode === 'sniper_minigame'
+                            ? 'bg-lime-400 hover:bg-lime-300'
+                            : mode === 'story_act1'
+                              ? 'bg-amber-400 hover:bg-amber-300'
+                              : 'bg-emerald-500 hover:bg-emerald-400'
               }`}
             >
               <Play className="h-5 w-5 fill-current" />

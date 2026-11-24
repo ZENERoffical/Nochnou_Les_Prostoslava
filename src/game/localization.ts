@@ -165,7 +165,15 @@ export type CutsceneLineKey =
   | 'act3_intro_0'
   | 'act3_outro_0'
   | 'act3_outro_1'
-  | 'act3_outro_2';
+  | 'act3_outro_2'
+  | 'act4_intro_0'
+  | 'act4_intro_1'
+  | 'act4_intro_2'
+  | 'act4_intro_3'
+  | 'act4_intro_4'
+  | 'act4_house_0'
+  | 'act4_uzi_secret'
+  | 'act4_outro_0';
 
 export function getCutsceneLine(
   key: CutsceneLineKey,
@@ -800,6 +808,206 @@ export function getCutsceneLine(
         display: 'туда нам надо...',
         speech: 'туда нам надо...',
       };
+
+    case 'act4_intro_0':
+      if (isEn) {
+        if (settings.familyMode) {
+          return {
+            display: 'Man, I totally crushed those pranksters back there!',
+            speech: 'Man, I totally crushed those pranksters back there!',
+          };
+        }
+        if (censored) {
+          return {
+            display: '[***] I totally [***] them up back there!',
+            speech: 'I totally messed them up back there!',
+            hasCensorBeep: true,
+          };
+        }
+        return {
+          display: 'Bla how cool was I when I Razebal them!',
+          speech: 'Bla how cool was I when I Razebal them!',
+        };
+      }
+      if (settings.familyMode) {
+        return {
+          display: 'Ого, как же я их круто переиграл!',
+          speech: 'Ого, как же я их круто переиграл!',
+        };
+      }
+      if (censored) {
+        return {
+          display: '[***] какже я их круто [***]',
+          speech: 'Пип, как же я их круто пип!',
+          hasCensorBeep: true,
+        };
+      }
+      return {
+        display: 'Bla какже я их круто Razebal',
+        speech: 'Бля, как же я их круто разъебал!',
+      };
+
+    case 'act4_intro_1':
+      if (isEn) {
+        if (settings.familyMode) {
+          return {
+            display: 'Hi Nikita bestfriend))))',
+            speech: 'Hi Nikita bestfriend!',
+          };
+        }
+        if (censored) {
+          return {
+            display: 'Hi Nikita [***]))))',
+            speech: 'Hi Nikita!',
+            hasCensorBeep: true,
+          };
+        }
+        return {
+          display: 'Hi Nikita pedofail))))',
+          speech: 'Hi Nikita pedofail!',
+        };
+      }
+      if (settings.familyMode) {
+        return {
+          display: 'Hi Nikita дружище))))',
+          speech: 'Хай Никита дружище!',
+        };
+      }
+      if (censored) {
+        return {
+          display: 'Hi Nikita [***]))))',
+          speech: 'Хай Никита пип!',
+          hasCensorBeep: true,
+        };
+      }
+      return {
+        display: 'Hi Nikita pedofail))))',
+        speech: 'Хай Никита педофайл!',
+      };
+
+    case 'act4_intro_2':
+      if (isEn) {
+        if (settings.familyMode) {
+          return {
+            display: 'Hey, are you kidding me?!',
+            speech: 'Hey, are you kidding me?',
+          };
+        }
+        if (censored) {
+          return {
+            display: 'Are you [***]?!',
+            speech: 'Are you crazy?',
+            hasCensorBeep: true,
+          };
+        }
+        return {
+          display: 'Are you axyel?!',
+          speech: 'Are you axyel?',
+        };
+      }
+      if (settings.familyMode) {
+        return {
+          display: 'Ты что, обалдел совсем?!',
+          speech: 'Ты что, обалдел совсем?',
+        };
+      }
+      if (censored) {
+        return {
+          display: 'Ты чо [***]?!',
+          speech: 'Ты чо пип?',
+          hasCensorBeep: true,
+        };
+      }
+      return {
+        display: 'Ты чо axyel?!',
+        speech: 'Ты чо ахуел?',
+      };
+
+    case 'act4_intro_3':
+      if (isEn) {
+        return {
+          display: 'Do you like pizza?',
+          speech: 'Do you like pizza?',
+        };
+      }
+      return {
+        display: 'Любиш пиццу?',
+        speech: 'Любишь пиццу?',
+      };
+
+    case 'act4_intro_4':
+      if (isEn) {
+        if (settings.familyMode) {
+          return {
+            display: 'I LOVED THAT BREAD!!!!',
+            speech: 'I loved that bread!',
+          };
+        }
+        if (censored) {
+          return {
+            display: 'I [***] BREAD!!!!',
+            speech: 'I bread!',
+            hasCensorBeep: true,
+          };
+        }
+        return {
+          display: 'I Veibal BREAD!!!!',
+          speech: 'I veibal bread!',
+        };
+      }
+      if (settings.familyMode) {
+        return {
+          display: 'Я ОБОЖАЮ ХЛЕБ!!!!',
+          speech: 'Я обожаю хлеб!',
+        };
+      }
+      if (censored) {
+        return {
+          display: 'Я [***] хлеб!!!!',
+          speech: 'Я пип хлеб!',
+          hasCensorBeep: true,
+        };
+      }
+      return {
+        display: 'Я Veibal хлеб!!!!',
+        speech: 'Я выебал хлеб!',
+      };
+
+    case 'act4_house_0':
+      if (isEn) {
+        return {
+          display: 'Nikita, take this pistol — RONER clones are swarming! Check us for guns & turrets!',
+          speech: 'Nikita, take this pistol! Clones are coming!',
+        };
+      }
+      return {
+        display: 'Никита, держи пистолет — прут клоны RONER! За килы бери у нас пушки и пулемёты!',
+        speech: 'Никита, держи пистолет! Прут клоны Ронер!',
+      };
+
+    case 'act4_uzi_secret':
+      if (isEn) {
+        return {
+          display: 'BITE THIS!!!!!!!',
+          speech: 'Bite this!',
+        };
+      }
+      return {
+        display: 'ВЫКУСИ!!!!!!!',
+        speech: 'Выкуси!',
+      };
+
+    case 'act4_outro_0':
+      if (isEn) {
+        return {
+          display: 'Best Mivina noodles and hot tea ever — nobody messes with our trio!',
+          speech: 'Best Mivina noodles and hot tea ever!',
+        };
+      }
+      return {
+        display: 'Вот это кайф — сидим втроём, кушаем мивину и пьём чай!',
+        speech: 'Вот это кайф! Сидим втроём, кушаем мивину и пьём чай!',
+      };
   }
 }
 
@@ -822,6 +1030,10 @@ const MEME_WORD_PHONETICS: Array<[RegExp, string]> = [
   [/\bsebysi\b/gi, 'съебусь'],
   [/\bpidor\b/gi, 'пидор'],
   [/\bkonchenu\b/gi, 'конченый'],
+  [/\bbla\b/gi, 'бля'],
+  [/\brazebal\b/gi, 'разъебал'],
+  [/\bpedofail\b/gi, 'педофайл'],
+  [/\bveibal\b/gi, 'выебал'],
   [/\bnikitys6666\b/gi, 'никитус шесть шесть шесть'],
   [/\broner_?552\b/gi, 'ронер'],
   [/\bsasha55k_?xl\b/gi, 'саша'],
@@ -1078,6 +1290,14 @@ export function getAchievementText(
       return isEn
         ? { title: 'Jacque Fresco Secret', desc: 'Peek at the entrance to city «Malinka»' }
         : { title: 'Секретик от жако фреско', desc: 'Посмотреть на город Малинка' };
+    case 'act4_shahediki':
+      return isEn
+        ? { title: 'Shahediki', desc: 'Secret Easter egg while holding the Uzi in Act 4' }
+        : { title: 'Шахедики', desc: 'Секретная пасхалка с Узи в Акте 4' };
+    case 'act4_jojo':
+      return isEn
+        ? { title: 'Mivina & Tea Party', desc: 'Complete Act 4 in «JoJo» Village' }
+        : { title: 'Мивина с чайком', desc: 'Пройти Акт 4 в деревне «ДжоДжо»' };
   }
 }
 
@@ -1101,9 +1321,11 @@ export function getUiText(lang: GameLanguage) {
       modeStory: 'Story · Act 1',
       modeStory2: 'Story · Act 2',
       modeStory3: 'Story · Act 3',
+      modeStory4: 'Story · Act 4',
       modeAct2Title: 'Act 2 · Factory',
       modeAct2Sub: '20 Mivinas + Corridor',
       modeAct3Sub: '30 Nights · Malinka Park',
+      modeAct4Sub: 'JoJo Village · 7 Waves',
       modeAct2Tooltip: 'Secret: peek at Mivina Corporation factory entrance',
       act2SecretLink: 'Secret: Act 2 Entrance',
       act3SecretLink: 'Secret: Act 3 (Malinka)',
@@ -1121,6 +1343,8 @@ export function getUiText(lang: GameLanguage) {
         'Act 2 (Factory): Pack 20 Mivinas for the Key, unlock the padlocked door, survive the long corridor hiding in closets [E] from Sasha, and grab the sniper at «Exit LOL»!',
       descStory3:
         'Act 3 (Malinka Central Park): 1m Day / 1m Night · 30 Nights! Keep campfire lit [E], scare night RONERs [F], crush metal [E] up to Lv.4–6 Bed (skips 1/2/3 days, 1-night CD) & beat Night 30!',
+      descStory4:
+        'Act 4 («JoJo» Village): Meet Giorno, get armed by Serious Sasha & Roner, survive 7 waves of RONER clones & Boss Sasha 67 (11488 HP), and unlock Uzi/AK-47/Sniper/RPG/Flamethrower & Auto-Turrets (kills are never spent)!',
       descFnaf:
         'FNAF Epta (Endless Act 2): Craft & pack batches of 20 Mivinas infinitely while hiding from blindfolded Sasha [E] and flashing RONER at windows [F]!',
       descSniper:
@@ -1138,6 +1362,8 @@ export function getUiText(lang: GameLanguage) {
         'WASD Move · E/LMB Box / Season / Closet / Pack / Door · F Flash Window · Esc Pause',
       controlsHudAct3:
         'WASD Move · Shift Run · E/LMB Log / Metal / Fire / Crusher / Sniper (Night 30) · F Light · Esc Pause',
+      controlsHudAct4:
+        'WASD Move · LMB Fire · 1-6 Weapons · E Shop / Talk · F Light · Esc Pause',
       controlsHudSniper:
         'WASD Move · Shift Run · Space Jump · LMB / E Sniper Fire · Mouse Aim · Esc Pause',
       hideControls: 'Hide controls',
@@ -1186,6 +1412,7 @@ export function getUiText(lang: GameLanguage) {
       cutsceneAct1: 'STORY · ACT 1',
       cutsceneAct2: 'THE ADVENTURES OF NIKITA · OFF TO THE MIVINA FACTORY',
       cutsceneAct3: 'ACT 3 · 30 NIGHTS IN MALINKA PARK',
+      cutsceneAct4: 'ACT 4 · «JOJO» VILLAGE',
       cutsceneSecret: 'SECRET · ACT 2 PREVIEW — «MIVINA CORPORATION»',
       cutsceneAct3Secret: 'SECRET · ACT 3 PREVIEW — CITY «MALINKA» ENTRANCE',
       skipBtn: 'Skip',
@@ -1201,6 +1428,9 @@ export function getUiText(lang: GameLanguage) {
       act3CardTitle: 'ACT 3 — MALINKA PARK SURVIVAL!',
       act3CardSub: 'Survive 30 nights against 2× Giant Sasha, fortify your camp & fight Night 30!',
       act3EnterBtn: 'CONTINUE TO ACT 3: MALINKA PARK',
+      act4CardTitle: 'ACT 4 — «JOJO» VILLAGE!',
+      act4CardSub: 'Meet Giorno, arm up from Sasha & Roner, defeat 7 waves & Boss Sasha 67!',
+      act4EnterBtn: 'CONTINUE TO ACT 4: «JOJO» VILLAGE',
       act2SecretBtn: 'Secret: Show Factory Entrance',
       act2VictoryTitle: 'ACT 2 COMPLETE!',
       act2VictorySub: '20 Mushroom Mivinas crafted and packed!',
@@ -1208,9 +1438,30 @@ export function getUiText(lang: GameLanguage) {
       act3VictoryTitle: 'ACT 3 COMPLETE!',
       act3VictorySub: '30 Nights in Malinka Park survived! The RONER army is destroyed!',
       act3VictorySaid: 'nikitys6666 heads toward «JoJo» Village:',
+      act4VictoryTitle: 'ACT 4 COMPLETE!',
+      act4VictorySub: 'Boss Sasha 67 defeated! Mivina & tea party with Sasha and Roner!',
+      act4VictorySaid: 'nikitys6666, Sasha & Roner at the table:',
       replayAct2: 'Play Act 2 Again',
       replayAct3: 'Play Act 3 Again',
+      replayAct4: 'Play Act 4 Again',
       act3Badge: 'ACT 3 · MALINKA PARK',
+      act4Badge: 'ACT 4 · «JOJO» VILLAGE',
+      act4WalkHouseObjective: 'Walk up to the house ahead where Sasha (visor) & Roner are waiting [E]',
+      act4WaveLabel: 'Wave',
+      act4EnemiesLeftLabel: 'Left',
+      act4KillsLabel: 'Kills (not spent)',
+      act4TurretsActive: 'Auto-Turrets ACTIVE',
+      act4TurretsLocked: 'Auto-Turrets [100 kills]',
+      act4TurretsUnlockBtn: 'Unlock Auto-Turrets (100)',
+      act4Boss67Label: 'BOSS SASHA 67!!!!!!',
+      act4Weapons: {
+        pistol: 'Pistol',
+        uzi: 'Uzi',
+        ak47: 'AK-47',
+        sniper: 'Sniper',
+        rpg: 'RPG',
+        flamethrower: 'Flamer',
+      },
       act3NightLabel: 'Night',
       act3DayWord: 'DAY',
       act3NightWord: 'NIGHT',
@@ -1226,6 +1477,8 @@ export function getUiText(lang: GameLanguage) {
       act3Night30Objective: 'NIGHT 30 FINALE! Grabbed Sniper — defeat Boss Sasha & the RONER army [LMB / E]!',
       statNights: 'Nights',
       statBaseLv: 'Base Lv.',
+      statKills: 'Kills',
+      statWave: 'Wave',
       statMushrooms: 'Mushrooms',
       statMivinas: 'Mivinas',
       statClones: 'Clones',
@@ -1276,9 +1529,11 @@ export function getUiText(lang: GameLanguage) {
     modeStory: 'История · Акт 1',
     modeStory2: 'История · Акт 2',
     modeStory3: 'История · Акт 3',
+    modeStory4: 'История · Акт 4',
     modeAct2Title: 'Акт 2 · Завод',
     modeAct2Sub: '20 мивин + Коридор',
     modeAct3Sub: '30 ночей · Парк Малинка',
+    modeAct4Sub: 'Деревня ДжоДжо · 7 волн',
     modeAct2Tooltip: 'Секрет: посмотреть вход на завод «Мивина Корпорейшен»',
     act2SecretLink: 'Секрет: Вход Акт 2',
     act3SecretLink: 'Секрет: Акт 3 (Малинка)',
@@ -1296,6 +1551,8 @@ export function getUiText(lang: GameLanguage) {
       'Акт 2 (Завод): Упакуй 20 мивин и получи ключ, открой дверь с замком, пройди длинный коридор прячась в шкаф [E] от Сани и найди «Выход лол»!',
     descStory3:
       'Акт 3 (Парк «Малинка»): День 1 мин / Ночь 1 мин · 30 ночей! Поддерживай костёр [E], отгоняй фонариком [F] ночных RONER, качай базу металлом до 4–6 ур. (Кровать: скип 1/2/3 дня, КД 1 ночь) и бей босса на 30-ю ночь!',
+    descStory4:
+      'Акт 4 (Деревня «ДжоДжо»): Встреть Джорно, дойди до домика Сани и Roner, отбей 7 волн клонов RONER и Босса Саню 67 (11488 HP)! Пушки (Узи/АК-47/Снайперка/Гранатомёт/Огнемёт) и Пулемёты открываются за килы — килы не тратятся!',
     descFnaf:
       'Фнаф Епта (Бесконечный Акт 2): Делай партии по 20 мивин бесконечно, прячься в шкаф [E] когда мигает свет и отгоняй фонариком [F] RONER от окон!',
     descSniper:
@@ -1313,6 +1570,8 @@ export function getUiText(lang: GameLanguage) {
       'WASD Идти · E/ЛКМ Коробка / Шкаф / Лапша / Пресс / Дверь · F Светить в окно · Esc Пауза',
     controlsHudAct3:
       'WASD Идти · Shift Бег · E/ЛКМ Бревно / Металл / Костер / Дробилка / Снайперка (30 ночь) · F Фонарик · Esc Пауза',
+    controlsHudAct4:
+      'WASD Идти · ЛКМ Огонь · 1-6 Пушки · E Покупка / Диалог · F Фонарик · Esc Пауза',
     controlsHudSniper:
       'WASD Идти · Shift Бег · Space Прыжок · ЛКМ / E Выстрел со снайперки · Мышь Прицел · Esc Пауза',
     hideControls: 'Скрыть управление',
@@ -1361,6 +1620,7 @@ export function getUiText(lang: GameLanguage) {
     cutsceneAct1: 'ИСТОРИЯ · АКТ 1',
     cutsceneAct2: 'ПОХОЖДЕНИЯ НИКИТЫ · ЗА МИВИНОЙ НА ЗАВОД',
     cutsceneAct3: 'АКТ 3 · 30 НОЧЕЙ В ПАРКЕ «МАЛИНКА»',
+    cutsceneAct4: 'АКТ 4 · ДЕРЕВНЯ «ДЖОДЖО»',
     cutsceneSecret: 'СЕКРЕТ · НАЧАЛО АКТА 2 — «МИВИНА КОРПОРЕЙШЕН»',
     cutsceneAct3Secret: 'СЕКРЕТ · АКТ 3 — ВХОД В ГОРОД «МАЛИНКА»',
     skipBtn: 'Пропустить',
@@ -1376,6 +1636,9 @@ export function getUiText(lang: GameLanguage) {
     act3CardTitle: 'АКТ 3 — 30 НОЧЕЙ В ПАРКЕ «МАЛИНКА»!',
     act3CardSub: 'Выживи 30 ночей от большого Сани (×2), качай базу за металл и отбейся на 30-ю ночь!',
     act3EnterBtn: 'ПЕРЕЙТИ К АКТУ 3: ПАРК «МАЛИНКА»',
+    act4CardTitle: 'АКТ 4 — ДЕРЕВНЯ «ДЖОДЖО»!',
+    act4CardSub: 'Встреть Джорно, возьми пушку у Саши и Roner, отбей 7 волн и Босса Саню 67!',
+    act4EnterBtn: 'ПЕРЕЙТИ К АКТУ 4: ДЕРЕВНЯ «ДЖОДЖО»',
     act2SecretBtn: 'Секрет: Показать вход Акта 2',
     act2VictoryTitle: 'АКТ 2 ПРОЙДЕН!',
     act2VictorySub: '20 грибных мивин произведено и упаковано!',
@@ -1383,9 +1646,30 @@ export function getUiText(lang: GameLanguage) {
     act3VictoryTitle: 'АКТ 3 ПРОЙДЕН!',
     act3VictorySub: '30 ночей в парке «Малинка» прожиты! Армия RONER уничтожена!',
     act3VictorySaid: 'nikitys6666 шагает в деревню «ДжоДжо»:',
+    act4VictoryTitle: 'АКТ 4 ПРОЙДЕН!',
+    act4VictorySub: 'Босс Саня 67 повержен! Никита, Саша и Roner кушают мивину и пьют чай!',
+    act4VictorySaid: 'nikitys6666, Саша и Roner за столом:',
     replayAct2: 'Пройти Акт 2 ещё раз',
     replayAct3: 'Пройти Акт 3 ещё раз',
+    replayAct4: 'Пройти Акт 4 ещё раз',
     act3Badge: 'АКТ 3 · ПАРК «МАЛИНКА»',
+    act4Badge: 'АКТ 4 · ДЕРЕВНЯ «ДЖОДЖО»',
+    act4WalkHouseObjective: 'Дойди до домика впереди, где ждут Саша (с визором) и Roner [E]',
+    act4WaveLabel: 'Волна',
+    act4EnemiesLeftLabel: 'Осталось',
+    act4KillsLabel: 'Килы (не тратятся)',
+    act4TurretsActive: 'Пулемёты АКТИВНЫ',
+    act4TurretsLocked: 'Пулемёты [100 килов]',
+    act4TurretsUnlockBtn: 'Взять пулемёты (100)',
+    act4Boss67Label: 'БОСС САНЯ 67!!!!!!',
+    act4Weapons: {
+      pistol: 'Пистолет',
+      uzi: 'Узи',
+      ak47: 'АК-47',
+      sniper: 'Снайперка',
+      rpg: 'Гранатомёт',
+      flamethrower: 'Огнемёт',
+    },
     act3NightLabel: 'Ночь',
     act3DayWord: 'ДЕНЬ',
     act3NightWord: 'НОЧЬ',
@@ -1401,6 +1685,8 @@ export function getUiText(lang: GameLanguage) {
     act3Night30Objective: '30-Я НОЧЬ! Получена снайперка — побей Босса Саню и волну RONER [ЛКМ / E]!',
     statNights: 'Ночей',
     statBaseLv: 'Ур. базы',
+    statKills: 'Килы',
+    statWave: 'Волна',
     statMushrooms: 'Грибы',
     statMivinas: 'Мивины',
     statClones: 'Клоны',

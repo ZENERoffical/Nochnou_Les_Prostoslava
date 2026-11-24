@@ -25,6 +25,8 @@ export interface RobloxRig {
   rightWing?: THREE.Group;
   blindfold?: THREE.Group;
   angryBrows?: THREE.Group;
+  visor?: THREE.Group;
+  lightningEyes?: THREE.Group;
   nameTag: THREE.Sprite;
   walkPhase: number;
 }
@@ -643,6 +645,60 @@ export function createSasha55kXL(anisotropy: number): RobloxRig {
   angryBrows.visible = false;
   head.add(angryBrows);
 
+  // Act 4 Tactical Glowing Visor (ONLY Sasha wears this!)
+  const visor = new THREE.Group();
+  const visorFrameMat = new THREE.MeshStandardMaterial({
+    color: 0x0f172a,
+    metalness: 0.8,
+    roughness: 0.25,
+  });
+  const visorGlassMat = new THREE.MeshStandardMaterial({
+    color: 0x38bdf8,
+    emissive: 0x0ea5e9,
+    emissiveIntensity: 1.4,
+    metalness: 0.4,
+    roughness: 0.12,
+  });
+  const visorLens = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.15, 0.12), visorGlassMat);
+  visorLens.position.set(0, 0.04, 0.27);
+  const visorFrame = new THREE.Mesh(new THREE.BoxGeometry(0.61, 0.19, 0.06), visorFrameMat);
+  visorFrame.position.set(0, 0.04, 0.245);
+  const visorStrap = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.08, 0.59), visorFrameMat);
+  visorStrap.position.set(0, 0.04, 0.0);
+  visor.add(visorStrap, visorFrame, visorLens);
+  visor.visible = false;
+  head.add(visor);
+
+  // Act 4 Wave 7 Boss Sasha 67: Glowing Lightning Eyes & Crackling Bolts
+  const lightningEyes = new THREE.Group();
+  const eyeGlowMat = new THREE.MeshStandardMaterial({
+    color: 0x7dd3fc,
+    emissive: 0x38bdf8,
+    emissiveIntensity: 3.2,
+    roughness: 0.1,
+  });
+  const boltMat = new THREE.MeshStandardMaterial({
+    color: 0xfef08a,
+    emissive: 0x38bdf8,
+    emissiveIntensity: 2.6,
+    roughness: 0.15,
+  });
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.068, 8, 8), eyeGlowMat);
+    eye.position.set(side * 0.13, 0.05, 0.305);
+    lightningEyes.add(eye);
+
+    const bolt1 = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.22, 0.04), boltMat);
+    bolt1.position.set(side * 0.21, 0.11, 0.33);
+    bolt1.rotation.z = side * -0.52;
+    const bolt2 = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.18, 0.04), boltMat);
+    bolt2.position.set(side * 0.29, 0.22, 0.33);
+    bolt2.rotation.z = side * 0.42;
+    lightningEyes.add(bolt1, bolt2);
+  }
+  lightningEyes.visible = false;
+  head.add(lightningEyes);
+
   enableShadows(bodyPivot);
   root.add(bodyPivot);
 
@@ -663,6 +719,8 @@ export function createSasha55kXL(anisotropy: number): RobloxRig {
     rightWing,
     blindfold,
     angryBrows,
+    visor,
+    lightningEyes,
     nameTag,
     walkPhase: 3.1,
   };
@@ -743,6 +801,24 @@ export function animateRobloxCharacter(
     rig.leftWing.rotation.y = 0.2 + flap;
     rig.rightWing.rotation.y = -0.2 - flap;
   }
+}
+
+export function animateRobloxSeated(
+  rig: RobloxRig,
+  elapsed: number,
+  phaseOffset = 0
+): void {
+  rig.bodyPivot.rotation.x = 0;
+  rig.bodyPivot.position.y = -0.26;
+  rig.leftLeg.rotation.x = -1.35;
+  rig.rightLeg.rotation.x = -1.35;
+  // Gentle eating / sipping tea motion
+  const sip = Math.sin(elapsed * 2.4 + phaseOffset);
+  rig.rightArm.rotation.x = -0.78 - Math.max(0, sip) * 0.42;
+  rig.leftArm.rotation.x = -0.58 - Math.max(0, -sip) * 0.25;
+  rig.torso.rotation.z = Math.sin(elapsed * 1.4 + phaseOffset) * 0.03;
+  rig.head.rotation.y = Math.sin(elapsed * 1.1 + phaseOffset) * 0.14;
+  rig.head.rotation.x = Math.sin(elapsed * 2.2 + phaseOffset) * 0.05;
 }
 
 export interface FlashlightRig {

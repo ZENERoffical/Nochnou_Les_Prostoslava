@@ -34,11 +34,13 @@ export const CutsceneOverlay: React.FC<CutsceneOverlayProps> = ({
             ? t.cutsceneAct3Secret
             : isSecretAct2
               ? t.cutsceneSecret
-              : mode === 'story_act3'
-                ? t.cutsceneAct3
-                : mode === 'story_act2'
-                  ? t.cutsceneAct2
-                  : t.cutsceneAct1}
+              : mode === 'story_act4'
+                ? t.cutsceneAct4
+                : mode === 'story_act3'
+                  ? t.cutsceneAct3
+                  : mode === 'story_act2'
+                    ? t.cutsceneAct2
+                    : t.cutsceneAct1}
         </div>
         <div className="flex items-center gap-2">
           {!isAnySecret && (

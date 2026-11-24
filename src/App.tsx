@@ -84,6 +84,18 @@ const INITIAL_HUD: HudSnapshot = {
   act3HasSniper: false,
   act3Hp: 3,
   act3MaxHp: 3,
+  act4Stage: 'walk_to_house',
+  act4Kills: 0,
+  act4Wave: 1,
+  act4MaxWaves: 7,
+  act4WaveEnemiesLeft: 0,
+  act4ActiveWeapon: 'pistol',
+  act4UnlockedWeapons: ['pistol'],
+  act4HasTurrets: false,
+  act4BossHp: 0,
+  act4BossMaxHp: 11488,
+  act4Hp: 5,
+  act4MaxHp: 5,
 };
 
 export default function App() {
@@ -185,10 +197,23 @@ export default function App() {
       engineRef.current?.fireSniperShot();
     } else if (hud.mode === 'story_act3') {
       engineRef.current?.interactAct3Park();
+    } else if (hud.mode === 'story_act4') {
+      engineRef.current?.interactAct4Village();
     } else {
       engineRef.current?.interactFactory();
     }
   }, [hud.mode]);
+
+  const handleSelectAct4Weapon = useCallback(
+    (weapon: HudSnapshot['act4ActiveWeapon']) => {
+      engineRef.current?.selectAct4Weapon(weapon);
+    },
+    []
+  );
+
+  const handleUnlockAct4Turrets = useCallback(() => {
+    engineRef.current?.unlockAct4Turrets();
+  }, []);
 
   const isCutscene =
     hud.phase === 'intro_cutscene' ||
@@ -199,7 +224,9 @@ export default function App() {
     hud.phase === 'act2_outro_cutscene' ||
     hud.phase === 'act3_secret' ||
     hud.phase === 'act3_intro_cutscene' ||
-    hud.phase === 'act3_outro_cutscene';
+    hud.phase === 'act3_outro_cutscene' ||
+    hud.phase === 'act4_intro_cutscene' ||
+    hud.phase === 'act4_outro_cutscene';
 
   const activeToastId = toastQueue[0] ?? null;
   const activeToastInfo = activeToastId
@@ -275,6 +302,8 @@ export default function App() {
             onVirtualJump={handleVirtualJump}
             onVirtualSprint={handleVirtualSprint}
             onInteract={handleInteract}
+            onSelectAct4Weapon={handleSelectAct4Weapon}
+            onUnlockAct4Turrets={handleUnlockAct4Turrets}
           />
         </>
       )}
