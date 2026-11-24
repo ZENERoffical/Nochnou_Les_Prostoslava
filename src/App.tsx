@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Trophy } from 'lucide-react';
+import { AchievementsModal } from './components/AchievementsModal';
 import { CutsceneOverlay } from './components/CutsceneOverlay';
 import { GameHud } from './components/GameHud';
 import { GameOverModal } from './components/GameOverModal';
 import { SettingsModal } from './components/SettingsModal';
 import { SpeechBubblesOverlay } from './components/SpeechBubblesOverlay';
 import { TitleOverlay } from './components/TitleOverlay';
+import { loadAchievements } from './game/achievements';
 import { ForestGameEngine } from './game/ForestGameEngine';
-import { loadSettings } from './game/localization';
+import { getAchievementText, getUiText, loadSettings } from './game/localization';
 import {
+  AchievementId,
+  AchievementProgressState,
   FloatingPickupText,
   GameMode,
   GameSettings,
@@ -52,6 +57,33 @@ const INITIAL_HUD: HudSnapshot = {
   lightsFlickering: false,
   factoryAlarmActive: false,
   windowBreachProgress: 0,
+  fnafMivinasTotal: 0,
+  fnafBatch: 1,
+  bestFnafMivinas: 0,
+  clonesKilled: 0,
+  sniperWave: 1,
+  sniperHp: 3,
+  sniperMaxHp: 3,
+  sniperCooldownRatio: 0,
+  bestSniperKills: 0,
+  act3Night: 1,
+  act3MaxNights: 30,
+  act3IsNight: false,
+  act3DayProgress: 0,
+  act3PhaseSecondsLeft: 60,
+  act3FireFuel: 80,
+  act3LogsInHand: 0,
+  act3MetalInHand: 0,
+  act3CrusherMetal: 0,
+  act3BaseLevel: 1,
+  act3NextUpgradeCost: 4,
+  act3BedCooldownNights: 0,
+  act3BossHp: 0,
+  act3BossMaxHp: 14,
+  act3RonerWaveAlive: 0,
+  act3HasSniper: false,
+  act3Hp: 3,
+  act3MaxHp: 3,
 };
 
 export default function App() {
@@ -63,6 +95,11 @@ export default function App() {
   const [floatingTexts, setFloatingTexts] = useState<FloatingPickupText[]>([]);
   const [muted, setMuted] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [achievementsOpen, setAchievementsOpen] = useState(false);
+  const [achievements, setAchievements] = useState<AchievementProgressState>(
+    () => loadAchievements()
+  );
+  const [toastQueue, setToastQueue] = useState<AchievementId[]>([]);
 
   useEffect(() => {
     const container = mountRef.current;
@@ -72,6 +109,12 @@ export default function App() {
       onHudUpdate: (nextHud) => setHud(nextHud),
       onBubblesUpdate: (nextBubbles) => setBubbles(nextBubbles),
       onFloatingTextsUpdate: (nextTexts) => setFloatingTexts(nextTexts),
+      onAchievementsChange: (nextState, newlyUnlocked) => {
+        setAchievements(nextState);
+        if (newlyUnlocked.length > 0) {
+          setToastQueue((prev) => [...prev, ...newlyUnlocked]);
+        }
+      },
     });
     engineRef.current = engine;
 
@@ -80,6 +123,14 @@ export default function App() {
       engineRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (toastQueue.length === 0) return;
+    const timer = window.setTimeout(() => {
+      setToastQueue((prev) => prev.slice(1));
+    }, 3600);
+    return () => window.clearTimeout(timer);
+  }, [toastQueue]);
 
   const handleSelectMode = useCallback((mode: GameMode) => {
     engineRef.current?.setMode(mode);
@@ -103,10 +154,6 @@ export default function App() {
 
   const handleExitToMenu = useCallback(() => {
     engineRef.current?.returnToMenu();
-  }, []);
-
-  const handleOpenAct2Secret = useCallback(() => {
-    engineRef.current?.startAct2SecretPreview();
   }, []);
 
   const handleToggleFlashlight = useCallback(() => {
@@ -134,8 +181,14 @@ export default function App() {
   }, []);
 
   const handleInteract = useCallback(() => {
-    engineRef.current?.interactFactory();
-  }, []);
+    if (hud.mode === 'sniper_minigame') {
+      engineRef.current?.fireSniperShot();
+    } else if (hud.mode === 'story_act3') {
+      engineRef.current?.interactAct3Park();
+    } else {
+      engineRef.current?.interactFactory();
+    }
+  }, [hud.mode]);
 
   const isCutscene =
     hud.phase === 'intro_cutscene' ||
@@ -143,24 +196,53 @@ export default function App() {
     hud.phase === 'act2_teaser' ||
     hud.phase === 'act2_intro_cutscene' ||
     hud.phase === 'act2_door_cutscene' ||
-    hud.phase === 'act2_outro_cutscene';
+    hud.phase === 'act2_outro_cutscene' ||
+    hud.phase === 'act3_secret' ||
+    hud.phase === 'act3_intro_cutscene' ||
+    hud.phase === 'act3_outro_cutscene';
+
+  const activeToastId = toastQueue[0] ?? null;
+  const activeToastInfo = activeToastId
+    ? getAchievementText(activeToastId, hud.settings.language)
+    : null;
+  const uiText = getUiText(hud.settings.language);
 
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-[#071018]">
       {/* Isolated WebGL canvas mount — never re-rendered by HUD state */}
       <div ref={mountRef} className="fixed inset-0 z-0" />
 
+      {/* Achievement Unlock Notification Banner */}
+      {activeToastInfo && (
+        <div className="pointer-events-none fixed top-4 left-1/2 z-50 -translate-x-1/2 flex items-center gap-3 rounded-xl border-2 border-amber-400 bg-[#0b1812]/96 px-4 py-2.5 shadow-2xl">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-amber-400/50 bg-amber-500/20 text-amber-300 shrink-0">
+            <Trophy className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-widest text-amber-300">
+              {uiText.achievementUnlockedLabel}
+            </div>
+            <div className="text-sm font-black text-white leading-tight">
+              {activeToastInfo.title}
+            </div>
+          </div>
+        </div>
+      )}
+
       {hud.phase === 'title' && (
         <TitleOverlay
           mode={hud.mode}
           settings={hud.settings}
           bestMushrooms={hud.bestMushrooms}
+          bestFnafMivinas={hud.bestFnafMivinas}
+          bestSniperKills={hud.bestSniperKills}
+          unlockedAchievements={achievements.unlockedIds.length}
           muted={muted}
           onSelectMode={handleSelectMode}
           onToggleMute={handleToggleMute}
           onOpenSettings={() => setSettingsOpen(true)}
+          onOpenAchievements={() => setAchievementsOpen(true)}
           onStart={() => handleStart(hud.mode)}
-          onOpenAct2Secret={handleOpenAct2Secret}
         />
       )}
 
@@ -172,6 +254,7 @@ export default function App() {
             language={hud.settings.language}
             mode={hud.mode}
             isSecretAct2={hud.phase === 'act2_teaser'}
+            isSecretAct3={hud.phase === 'act3_secret'}
             onSkip={handleSkipCutscene}
             onExitToMenu={handleExitToMenu}
           />
@@ -201,7 +284,6 @@ export default function App() {
         onRestart={handleStart}
         onResume={handleTogglePause}
         onExitToMenu={handleExitToMenu}
-        onOpenAct2Secret={handleOpenAct2Secret}
         onOpenSettings={() => setSettingsOpen(true)}
       />
 
@@ -210,6 +292,13 @@ export default function App() {
         settings={hud.settings}
         onChange={handleSettingsChange}
         onClose={() => setSettingsOpen(false)}
+      />
+
+      <AchievementsModal
+        open={achievementsOpen}
+        language={hud.settings.language}
+        state={achievements}
+        onClose={() => setAchievementsOpen(false)}
       />
     </main>
   );

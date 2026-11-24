@@ -11,8 +11,8 @@ export const PACKER_POS = new THREE.Vector3(10.6, 0, CONVEYOR_Z);
 export const CORRIDOR_X = 12.0;
 export const CORRIDOR_HALF_W = 3.0;
 export const CORRIDOR_VESTIBULE_Z = -24.5;
-export const CORRIDOR_END_Z = -96.5;
-export const SNIPER_PICKUP_POS = new THREE.Vector3(CORRIDOR_X, 0, -93.0);
+export const CORRIDOR_END_Z = -210.5;
+export const SNIPER_PICKUP_POS = new THREE.Vector3(CORRIDOR_X, 0, -207.0);
 
 export interface FactoryObstacle {
   x: number;
@@ -1508,11 +1508,15 @@ export function buildFactoryEnvironment(
     { x: -14.2, z: -8.6, yaw: Math.PI },      // 4. North Rack Wing West
     { x: 14.5, z: -8.6, yaw: Math.PI },       // 5. North Rack Wing East
     { x: 15.2, z: 4.0, yaw: Math.PI / 2 },    // 6. East Rack Room
-    // 4 Corridor Hiding Closets («Шкафы в длинном коридоре»)
+    // 8 Corridor Hiding Closets («Шкафы в длинном коридоре») spaced along the 186m corridor
     { x: CORRIDOR_X - CORRIDOR_HALF_W + 0.72, z: -38.0, yaw: Math.PI / 2 },
-    { x: CORRIDOR_X + CORRIDOR_HALF_W - 0.72, z: -54.0, yaw: -Math.PI / 2 },
-    { x: CORRIDOR_X - CORRIDOR_HALF_W + 0.72, z: -70.0, yaw: Math.PI / 2 },
-    { x: CORRIDOR_X + CORRIDOR_HALF_W - 0.72, z: -84.0, yaw: -Math.PI / 2 },
+    { x: CORRIDOR_X + CORRIDOR_HALF_W - 0.72, z: -59.0, yaw: -Math.PI / 2 },
+    { x: CORRIDOR_X - CORRIDOR_HALF_W + 0.72, z: -80.0, yaw: Math.PI / 2 },
+    { x: CORRIDOR_X + CORRIDOR_HALF_W - 0.72, z: -101.0, yaw: -Math.PI / 2 },
+    { x: CORRIDOR_X - CORRIDOR_HALF_W + 0.72, z: -122.0, yaw: Math.PI / 2 },
+    { x: CORRIDOR_X + CORRIDOR_HALF_W - 0.72, z: -143.0, yaw: -Math.PI / 2 },
+    { x: CORRIDOR_X - CORRIDOR_HALF_W + 0.72, z: -164.0, yaw: Math.PI / 2 },
+    { x: CORRIDOR_X + CORRIDOR_HALF_W - 0.72, z: -185.0, yaw: -Math.PI / 2 },
   ];
   lockerDefs.forEach((ld, idx) => {
     lockers.push(createLockerProp(idx + 1, ld.x, ld.z, ld.yaw, worldGroup, obstacles));
@@ -1558,9 +1562,9 @@ export function buildFactoryEnvironment(
     obstacles
   );
 
-  // Vestibule + Corridor Floor & Ceiling (z = -18.5 .. -96.5, width 6m around x=12)
+  // Vestibule + Corridor Floor & Ceiling (z = -18.5 .. -210.5, width 6m around x=12)
   const corridorFloorTex = makeFloorTexture(anisotropy);
-  corridorFloorTex.repeat.set(2, 22);
+  corridorFloorTex.repeat.set(2, 54);
   disposables.push(corridorFloorTex);
   const corridorFloorMat = new THREE.MeshStandardMaterial({
     map: corridorFloorTex,
@@ -1615,8 +1619,8 @@ export function buildFactoryEnvironment(
   addWallSegment(worldGroup, obstacles, CORRIDOR_X + 2.35, CORRIDOR_VESTIBULE_Z, 1.3, 0.5, partitionMat, 4.6, 2.3, true);
   addWallSegment(worldGroup, obstacles, CORRIDOR_X, CORRIDOR_VESTIBULE_Z, 3.6, 0.5, partitionMat, 0.7, 4.25, false);
 
-  // Structural ribs & ceiling bulbs along the 72m corridor (shares bulbMat for Sanya flicker!)
-  for (let cz = -29; cz >= -93; cz -= 8) {
+  // Structural ribs & ceiling bulbs along the ~186m corridor (shares bulbMat for Sanya flicker!)
+  for (let cz = -29; cz >= -205; cz -= 11) {
     const ribL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 4.5, 0.32), frameMat);
     ribL.position.set(CORRIDOR_X - CORRIDOR_HALF_W + 0.08, 2.25, cz);
     const ribR = new THREE.Mesh(new THREE.BoxGeometry(0.22, 4.5, 0.32), frameMat);
@@ -1630,9 +1634,9 @@ export function buildFactoryEnvironment(
     worldGroup.add(ribL, ribR, ribTop, fix, bulb);
   }
 
-  // 2 Corridor PointLights integrated with lampLights so they flicker when blindfolded Sanya approaches
-  for (const cz of [-46, -74]) {
-    const cpt = new THREE.PointLight(0xbfdbfe, 12, 34, 1.3);
+  // 4 Corridor PointLights integrated with lampLights so they flicker when blindfolded Sanya approaches
+  for (const cz of [-48, -96, -144, -192]) {
+    const cpt = new THREE.PointLight(0xbfdbfe, 12, 44, 1.25);
     cpt.position.set(CORRIDOR_X, 3.9, cz);
     worldGroup.add(cpt);
     lampLights.push(cpt);

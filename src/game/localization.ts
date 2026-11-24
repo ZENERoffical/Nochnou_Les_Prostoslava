@@ -1,4 +1,4 @@
-import { GameLanguage, GameSettings } from '../types/game';
+import { AchievementId, GameLanguage, GameSettings } from '../types/game';
 
 const SETTINGS_STORAGE_KEY = 'prostophilya_settings_v2';
 
@@ -160,7 +160,12 @@ export type CutsceneLineKey =
   | 'act2_door_0'
   | 'act2_door_1'
   | 'act2_final_0'
-  | 'act2_outro_0';
+  | 'act2_outro_0'
+  | 'act3_secret'
+  | 'act3_intro_0'
+  | 'act3_outro_0'
+  | 'act3_outro_1'
+  | 'act3_outro_2';
 
 export function getCutsceneLine(
   key: CutsceneLineKey,
@@ -368,6 +373,18 @@ export function getCutsceneLine(
       return {
         display: 'Двери завода «Мивина Корпорейшен» слегка приоткрыты... Пройди Акт 1 (1000м), чтобы добраться сюда!',
         speech: 'Двери завода Мивина Корпорейшен слегка приоткрыты. Пройди Акт один, чтобы добраться сюда!',
+      };
+
+    case 'act3_secret':
+      if (isEn) {
+        return {
+          display: 'Whoa... so that is the city of «Malinka»! Act 3 awaits beyond these gates!',
+          speech: 'Whoa, so that is the city of Malinka! Act three awaits beyond these gates!',
+        };
+      }
+      return {
+        display: 'Ого... так вот он какой, вход в город «Малинка»! Продолжение ждёт в Акте 3!',
+        speech: 'Ого, так вот он какой, вход в город Малинка! Продолжение ждёт в Акте три!',
       };
 
     case 'act2_intro_0':
@@ -683,6 +700,106 @@ export function getCutsceneLine(
         display: '360 ХЕДШОТ!! ВЫХОД ЛОЛ, ПОКА ПРИКОЛЬДЕСЫ!',
         speech: 'Триста шестьдесят хедшот! Выход лол, пока прикольдесы!',
       };
+
+    case 'act3_intro_0':
+      if (isEn) {
+        if (settings.familyMode) {
+          return {
+            display: 'Yikes, I am in trouble if I do not sprint away from here!',
+            speech: 'Yikes, I am in trouble if I do not sprint away from here!',
+          };
+        }
+        if (censored) {
+          return {
+            display: '[***] I am in [***] if I do not [***] out of here!',
+            speech: 'I am in trouble if I do not run out of here!',
+            hasCensorBeep: true,
+          };
+        }
+        return {
+          display: 'Cyka I am Pizda if I do not sebysi out of here!',
+          speech: 'Cyka I am Pizda if I do not sebysi out of here!',
+        };
+      }
+      if (settings.familyMode) {
+        return {
+          display: 'Ой-ой, мне конец, если я срочно не сбегу отсюда!',
+          speech: 'Ой-ой, мне конец, если я срочно не сбегу отсюда!',
+        };
+      }
+      if (censored) {
+        return {
+          display: '[ЦЕНЗУРА] мне [***] если я не [***] от сюда',
+          speech: 'Пип, мне пип, если я не свалю отсюда!',
+          hasCensorBeep: true,
+        };
+      }
+      return {
+        display: 'Cyka мне Pizda если я не sebysi от сюда',
+        speech: 'Сука, мне пизда, если я не съебусь отсюда!',
+      };
+
+    case 'act3_outro_0':
+      if (isEn) {
+        return {
+          display: 'Lord have mercy, I barely survived!',
+          speech: 'Lord have mercy, I barely survived!',
+        };
+      }
+      return {
+        display: 'Господи помилуй ели выжыл',
+        speech: 'Господи помилуй, еле выжил!',
+      };
+
+    case 'act3_outro_1':
+      if (isEn) {
+        if (settings.familyMode) {
+          return {
+            display: 'You cheater, sneaky sharpshooter!!!!!!',
+            speech: 'You cheater, sneaky sharpshooter!',
+          };
+        }
+        if (censored) {
+          return {
+            display: 'You cheater, [***] aimer!!!!!!',
+            speech: 'You cheater, aimer!',
+            hasCensorBeep: true,
+          };
+        }
+        return {
+          display: 'You cheater, friggin aimer!!!!!!',
+          speech: 'You cheater, friggin aimer!',
+        };
+      }
+      if (settings.familyMode) {
+        return {
+          display: 'Ты читер, хитрый снайпер!!!!!!',
+          speech: 'Ты читер, хитрый снайпер!',
+        };
+      }
+      if (censored) {
+        return {
+          display: 'Ты читер,[***] аймер!!!!!!',
+          speech: 'Ты читер, пип аймер!',
+          hasCensorBeep: true,
+        };
+      }
+      return {
+        display: 'Ты читер,сраний аймер!!!!!!',
+        speech: 'Ты читер, сраный аймер!',
+      };
+
+    case 'act3_outro_2':
+      if (isEn) {
+        return {
+          display: 'that is where we need to go...',
+          speech: 'that is where we need to go...',
+        };
+      }
+      return {
+        display: 'туда нам надо...',
+        speech: 'туда нам надо...',
+      };
   }
 }
 
@@ -702,6 +819,7 @@ const MEME_WORD_PHONETICS: Array<[RegExp, string]> = [
   [/\bpizda\b/gi, 'пизда'],
   [/\bpizdet\b/gi, 'пиздец'],
   [/\bxyuna\b/gi, 'хуйня'],
+  [/\bsebysi\b/gi, 'съебусь'],
   [/\bpidor\b/gi, 'пидор'],
   [/\bkonchenu\b/gi, 'конченый'],
   [/\bnikitys6666\b/gi, 'никитус шесть шесть шесть'],
@@ -709,6 +827,7 @@ const MEME_WORD_PHONETICS: Array<[RegExp, string]> = [
   [/\bsasha55k_?xl\b/gi, 'саша'],
   [/\bprostophilya\b/gi, 'простофиля'],
   [/\bmivina\b/gi, 'мивина'],
+  [/\bmalinka\b/gi, 'малинка'],
   [/\bgazan\b/gi, 'газан'],
 ];
 
@@ -913,6 +1032,55 @@ export function transliterateEnglishToRussianPhonetics(text: string): string {
   return result;
 }
 
+export function getAchievementText(
+  id: AchievementId,
+  lang: GameLanguage
+): { title: string; desc: string } {
+  const isEn = lang === 'en';
+  switch (id) {
+    case 'act1_clear':
+      return isEn
+        ? { title: 'What idiots...', desc: 'Complete Act 1' }
+        : { title: 'Дебилы какието...', desc: 'Пройти Акт 1' };
+    case 'act2_clear':
+      return isEn
+        ? { title: 'Mivina is mine now!', desc: 'Complete Act 2' }
+        : { title: 'Мивина теперь моя!', desc: 'Пройти Акт 2' };
+    case 'act3_malinka':
+      return isEn
+        ? { title: 'Raspberry Clouds', desc: 'Complete Act 3' }
+        : { title: 'Малиновие облока', desc: 'Пройти Акт 3' };
+    case 'fnaf_50':
+      return isEn
+        ? { title: '5 out of 20', desc: 'Pack 50 Mivinas in minigame «FNAF Epta»' }
+        : { title: '5 на 20', desc: 'Собрать 50 мивин в мини-игре «Фнаф Епта»' };
+    case 'fnaf_100':
+      return isEn
+        ? { title: 'King of Mivina', desc: 'Pack 100 Mivinas in minigame «FNAF Epta»' }
+        : { title: 'Король мивин', desc: 'Собрать 100 мивин в мини-игре «Фнаф Епта»' };
+    case 'mush_50':
+      return isEn
+        ? { title: 'Forester', desc: 'Collect 50 mushrooms' }
+        : { title: 'Лесник', desc: 'Собрать 50 грибов' };
+    case 'mush_100':
+      return isEn
+        ? { title: 'Shroom-crazed', desc: 'Collect 100 mushrooms' }
+        : { title: 'Грибонутий', desc: 'Собрать 100 грибов' };
+    case 'mush_200':
+      return isEn
+        ? { title: 'Mushroom King', desc: 'Collect 200 mushrooms' }
+        : { title: 'Король Грибов', desc: 'Собрать 200 грибов' };
+    case 'sniper_100':
+      return isEn
+        ? { title: "Mom's Sniper", desc: 'Kill 100 clones in «The Sniper Is Mine!»' }
+        : { title: 'Мамкин Снайпер', desc: 'Убить 100 клонов в мини-игре «Снайперка теперь моя!»' };
+    case 'secret_malinka':
+      return isEn
+        ? { title: 'Jacque Fresco Secret', desc: 'Peek at the entrance to city «Malinka»' }
+        : { title: 'Секретик от жако фреско', desc: 'Посмотреть на город Малинка' };
+  }
+}
+
 export function getUiText(lang: GameLanguage) {
   if (lang === 'en') {
     return {
@@ -922,12 +1090,27 @@ export function getUiText(lang: GameLanguage) {
       muteLabel: 'Mute sound',
       unmuteLabel: 'Unmute sound',
       settingsBtn: 'Settings',
+      achievementsBtn: 'Achievements',
+      achievementsTitle: 'ACHIEVEMENTS',
+      achievementUnlockedLabel: 'ACHIEVEMENT UNLOCKED!',
+      achievementsProgressHint: 'Track your milestones across Story & Minigames',
+      unlockedLabel: 'Unlocked',
+      lockedLabel: 'Locked',
+      tabStory: 'Story',
+      tabMinigames: 'Minigames',
       modeStory: 'Story · Act 1',
       modeStory2: 'Story · Act 2',
+      modeStory3: 'Story · Act 3',
       modeAct2Title: 'Act 2 · Factory',
       modeAct2Sub: '20 Mivinas + Corridor',
+      modeAct3Sub: '30 Nights · Malinka Park',
       modeAct2Tooltip: 'Secret: peek at Mivina Corporation factory entrance',
-      act2SecretLink: 'Secret: Entrance',
+      act2SecretLink: 'Secret: Act 2 Entrance',
+      act3SecretLink: 'Secret: Act 3 (Malinka)',
+      modeFnafTitle: 'FNAF Epta',
+      modeFnafSub: 'Endless Act 2',
+      modeSniperTitle: 'Sniper Is Mine!',
+      modeSniperSub: 'Endless Clones',
       modeFP: '1st Person',
       modeHardcore: 'Hardcore 3rd',
       endless: 'Endless',
@@ -936,17 +1119,27 @@ export function getUiText(lang: GameLanguage) {
         'Act 1 (1000m): Cross the foggy 1000m road, grab 40 mushrooms, charge your flashlight and reach Mivina Corporation!',
       descStory2:
         'Act 2 (Factory): Pack 20 Mivinas for the Key, unlock the padlocked door, survive the long corridor hiding in closets [E] from Sasha, and grab the sniper at «Exit LOL»!',
+      descStory3:
+        'Act 3 (Malinka Central Park): 1m Day / 1m Night · 30 Nights! Keep campfire lit [E], scare night RONERs [F], crush metal [E] up to Lv.4–6 Bed (skips 1/2/3 days, 1-night CD) & beat Night 30!',
+      descFnaf:
+        'FNAF Epta (Endless Act 2): Craft & pack batches of 20 Mivinas infinitely while hiding from blindfolded Sasha [E] and flashing RONER at windows [F]!',
+      descSniper:
+        'The Sniper Is Mine! (Endless Shooter): Blast waves of Sasha and RONER clones [LMB / E] with your sniper rifle and rack up 100 kills!',
       descFP:
         'Endless Mode (1st Person): Shine flashlight [F] at RONER_552 and sasha55k_XL and beat your best score!',
       descHardcore:
         'Endless Mode (Hardcore 3rd Person): Faster, angrier chasers — survive as long as you can!',
       playBtn: 'PLAY',
       controlsTitle:
-        'WASD Move · Shift Sprint · Space Jump · F Flashlight · E/LMB Interact',
+        'WASD Move · Shift Sprint · Space Jump · F Flashlight · E/LMB Interact / Fire',
       controlsHud:
         'WASD Move · Shift Run · Space Jump · F/RMB Light · Mouse Look · Esc Pause',
       controlsHudAct2:
         'WASD Move · E/LMB Box / Season / Closet / Pack / Door · F Flash Window · Esc Pause',
+      controlsHudAct3:
+        'WASD Move · Shift Run · E/LMB Log / Metal / Fire / Crusher / Sniper (Night 30) · F Light · Esc Pause',
+      controlsHudSniper:
+        'WASD Move · Shift Run · Space Jump · LMB / E Sniper Fire · Mouse Aim · Esc Pause',
       hideControls: 'Hide controls',
       showControls: 'Controls',
       mushroomName: 'Prostophilya',
@@ -954,6 +1147,16 @@ export function getUiText(lang: GameLanguage) {
       badgeStory: 'ACT 1',
       badgeStory2: 'ACT 2 · FACTORY',
       badgeFP: '1ST PERSON · ENDLESS',
+      fnafBadge: 'FNAF EPTA · ENDLESS',
+      fnafTotalLabel: 'Total Mivinas',
+      fnafBatchLabel: 'Batch',
+      fnafStageLoop: 'Endless loop: season 20 noodles, pack them at the press & survive!',
+      sniperBadge: 'THE SNIPER IS MINE!',
+      sniperClonesLabel: 'Clones Killed',
+      sniperWaveLabel: 'Wave',
+      sniperHpLabel: 'Armor',
+      sniperShootPrompt: 'FIRE [LMB / E]',
+      sniperTouchFire: 'FIRE',
       factoryShort: 'Mivina Corp.:',
       panther: 'PANTHER!',
       stamina: 'Stamina',
@@ -982,7 +1185,9 @@ export function getUiText(lang: GameLanguage) {
       menuBtn: 'MAIN MENU',
       cutsceneAct1: 'STORY · ACT 1',
       cutsceneAct2: 'THE ADVENTURES OF NIKITA · OFF TO THE MIVINA FACTORY',
+      cutsceneAct3: 'ACT 3 · 30 NIGHTS IN MALINKA PARK',
       cutsceneSecret: 'SECRET · ACT 2 PREVIEW — «MIVINA CORPORATION»',
+      cutsceneAct3Secret: 'SECRET · ACT 3 PREVIEW — CITY «MALINKA» ENTRANCE',
       skipBtn: 'Skip',
       menuShort: 'Menu',
       secretHint: 'Press Esc / Space or «Main Menu» to return',
@@ -993,12 +1198,37 @@ export function getUiText(lang: GameLanguage) {
       act2CardTitle: 'ACT 2 — MIVINA FACTORY READY!',
       act2CardSub: 'Turn your mushrooms into 20 packed Mivinas on the factory floor!',
       act2EnterBtn: 'CONTINUE TO ACT 2: FACTORY',
+      act3CardTitle: 'ACT 3 — MALINKA PARK SURVIVAL!',
+      act3CardSub: 'Survive 30 nights against 2× Giant Sasha, fortify your camp & fight Night 30!',
+      act3EnterBtn: 'CONTINUE TO ACT 3: MALINKA PARK',
       act2SecretBtn: 'Secret: Show Factory Entrance',
       act2VictoryTitle: 'ACT 2 COMPLETE!',
       act2VictorySub: '20 Mushroom Mivinas crafted and packed!',
       act2VictorySaid: 'nikitys6666 sealed the export crate:',
+      act3VictoryTitle: 'ACT 3 COMPLETE!',
+      act3VictorySub: '30 Nights in Malinka Park survived! The RONER army is destroyed!',
+      act3VictorySaid: 'nikitys6666 heads toward «JoJo» Village:',
       replayAct2: 'Play Act 2 Again',
+      replayAct3: 'Play Act 3 Again',
+      act3Badge: 'ACT 3 · MALINKA PARK',
+      act3NightLabel: 'Night',
+      act3DayWord: 'DAY',
+      act3NightWord: 'NIGHT',
+      act3FireLabel: 'Campfire',
+      act3LogsLabel: 'Logs',
+      act3MetalLabel: 'Metal',
+      act3BaseLevelLabel: 'Base Lv.',
+      act3MaxedLabel: 'MAX FORT',
+      act3BedReadyLabel: 'Bed: Ready',
+      act3BedCooldownLabel: 'Bed: 1 night CD',
+      act3BossLabel: 'BOSS GIANT SASHA',
+      act3RonerWaveLabel: 'RONER Wave',
+      act3Night30Objective: 'NIGHT 30 FINALE! Grabbed Sniper — defeat Boss Sasha & the RONER army [LMB / E]!',
+      statNights: 'Nights',
+      statBaseLv: 'Base Lv.',
       statMushrooms: 'Mushrooms',
+      statMivinas: 'Mivinas',
+      statClones: 'Clones',
       statTime: 'Time',
       statScared: 'Flashed',
       statBest: 'Best',
@@ -1035,12 +1265,27 @@ export function getUiText(lang: GameLanguage) {
     muteLabel: 'Выключить звук',
     unmuteLabel: 'Включить звук',
     settingsBtn: 'Настройки',
+    achievementsBtn: 'Достижения',
+    achievementsTitle: 'ДОСТИЖЕНИЯ',
+    achievementUnlockedLabel: 'ДОСТИЖЕНИЕ ОТКРЫТО!',
+    achievementsProgressHint: 'Выполняй задания в сюжете, секретах и мини-играх',
+    unlockedLabel: 'Открыто',
+    lockedLabel: 'Закрыто',
+    tabStory: 'История',
+    tabMinigames: 'Мини-игры',
     modeStory: 'История · Акт 1',
     modeStory2: 'История · Акт 2',
+    modeStory3: 'История · Акт 3',
     modeAct2Title: 'Акт 2 · Завод',
     modeAct2Sub: '20 мивин + Коридор',
+    modeAct3Sub: '30 ночей · Парк Малинка',
     modeAct2Tooltip: 'Секрет: посмотреть вход на завод «Мивина Корпорейшен»',
-    act2SecretLink: 'Секрет: Вход на завод',
+    act2SecretLink: 'Секрет: Вход Акт 2',
+    act3SecretLink: 'Секрет: Акт 3 (Малинка)',
+    modeFnafTitle: 'Фнаф Епта',
+    modeFnafSub: 'Бесконечный Акт 2',
+    modeSniperTitle: 'Снайперка теперь моя!',
+    modeSniperSub: 'Клоны Сани и RONER',
     modeFP: '1-е лицо',
     modeHardcore: 'Хардкор 3-е',
     endless: 'Бесконечный',
@@ -1049,17 +1294,27 @@ export function getUiText(lang: GameLanguage) {
       'Акт 1 (1000м): Пройди длинную туманную дорогу, собери 40 грибов, заряжай фонарик и добеги до завода «Мивина Корпорейшен»!',
     descStory2:
       'Акт 2 (Завод): Упакуй 20 мивин и получи ключ, открой дверь с замком, пройди длинный коридор прячась в шкаф [E] от Сани и найди «Выход лол»!',
+    descStory3:
+      'Акт 3 (Парк «Малинка»): День 1 мин / Ночь 1 мин · 30 ночей! Поддерживай костёр [E], отгоняй фонариком [F] ночных RONER, качай базу металлом до 4–6 ур. (Кровать: скип 1/2/3 дня, КД 1 ночь) и бей босса на 30-ю ночь!',
+    descFnaf:
+      'Фнаф Епта (Бесконечный Акт 2): Делай партии по 20 мивин бесконечно, прячься в шкаф [E] когда мигает свет и отгоняй фонариком [F] RONER от окон!',
+    descSniper:
+      'Снайперка теперь моя! (Бесконечный режим): Отстреливай волны клонов Сани и RONER из снайперской винтовки [ЛКМ / E]!',
     descFP:
       'Бесконечный режим (1-е лицо): свети фонариком [F] на RONER_552 и sasha55k_XL и ставь рекорд!',
     descHardcore:
       'Бесконечный режим (Хардкор 3-е лицо): враги быстрее и злее, продержись как можно дольше!',
     playBtn: 'ИГРАТЬ',
     controlsTitle:
-      'WASD Идти · Shift Рывок · Space Прыжок · F Фонарик · E/ЛКМ Действие',
+      'WASD Идти · Shift Рывок · Space Прыжок · F Фонарик · E/ЛКМ Действие / Выстрел',
     controlsHud:
       'WASD Идти · Shift Бег · Space Прыжок · F/ПКМ Фонарик · Мышь/Q,E Камера · Esc Пауза',
     controlsHudAct2:
       'WASD Идти · E/ЛКМ Коробка / Шкаф / Лапша / Пресс / Дверь · F Светить в окно · Esc Пауза',
+    controlsHudAct3:
+      'WASD Идти · Shift Бег · E/ЛКМ Бревно / Металл / Костер / Дробилка / Снайперка (30 ночь) · F Фонарик · Esc Пауза',
+    controlsHudSniper:
+      'WASD Идти · Shift Бег · Space Прыжок · ЛКМ / E Выстрел со снайперки · Мышь Прицел · Esc Пауза',
     hideControls: 'Скрыть управление',
     showControls: 'Управление',
     mushroomName: 'Простофиля',
@@ -1067,6 +1322,16 @@ export function getUiText(lang: GameLanguage) {
     badgeStory: 'АКТ 1',
     badgeStory2: 'АКТ 2 · ЗАВОД',
     badgeFP: '1-Е ЛИЦО · БЕСК.',
+    fnafBadge: 'ФНАФ ЕПТА · БЕСК.',
+    fnafTotalLabel: 'Всего мивин',
+    fnafBatchLabel: 'Партия',
+    fnafStageLoop: 'Бесконечный завод: делай партии по 20 мивин и выживай!',
+    sniperBadge: 'СНАЙПЕРКА ТЕПЕРЬ МОЯ!',
+    sniperClonesLabel: 'Клонов убито',
+    sniperWaveLabel: 'Волна',
+    sniperHpLabel: 'Броня',
+    sniperShootPrompt: 'ОГОНЬ [ЛКМ / E]',
+    sniperTouchFire: 'ВЫСТРЕЛ',
     factoryShort: 'Мивина Корп.:',
     panther: 'ПАНТЕРА!',
     stamina: 'Выносливость',
@@ -1079,7 +1344,7 @@ export function getUiText(lang: GameLanguage) {
     act2MushroomsStock: 'Грибы',
     act2KeyBadge: 'КЛЮЧ ОТ ДВЕРИ',
     act2StageConveyor: 'Этап 1: Разложи приправу на 20 кубиков лапши',
-    act2StagePackaging: 'Этап 2: Иди к прессу и упакуй 20 мивин за ключ!',
+    act2StagePackaging: 'Этап 2: Иди к прессу и упакуй 20 мивин!',
     act2StageCorridorKey: 'Этап 3: Ключ получен! Открой дверь с замком в северном цехе',
     act2StageCorridor: 'Этап 4: Иди по длинному коридору, прячься в шкаф [E] от Сани, дойди до «Выход лол»!',
     act2CorridorProgressLabel: 'Выход лол',
@@ -1095,7 +1360,9 @@ export function getUiText(lang: GameLanguage) {
     menuBtn: 'НА ГЛАВНЫЙ ЭКРАН',
     cutsceneAct1: 'ИСТОРИЯ · АКТ 1',
     cutsceneAct2: 'ПОХОЖДЕНИЯ НИКИТЫ · ЗА МИВИНОЙ НА ЗАВОД',
+    cutsceneAct3: 'АКТ 3 · 30 НОЧЕЙ В ПАРКЕ «МАЛИНКА»',
     cutsceneSecret: 'СЕКРЕТ · НАЧАЛО АКТА 2 — «МИВИНА КОРПОРЕЙШЕН»',
+    cutsceneAct3Secret: 'СЕКРЕТ · АКТ 3 — ВХОД В ГОРОД «МАЛИНКА»',
     skipBtn: 'Пропустить',
     menuShort: 'Меню',
     secretHint: 'Нажми Esc / Space или «На главный экран», чтобы вернуться',
@@ -1106,12 +1373,37 @@ export function getUiText(lang: GameLanguage) {
     act2CardTitle: 'АКТ 2 — ЗАВОД «МИВИНА КОРПОРЕЙШЕН»!',
     act2CardSub: 'Сделай из собранных грибов 20 мивин на конвейере и упакуй их!',
     act2EnterBtn: 'ПЕРЕЙТИ К АКТУ 2: ЗАВОД',
+    act3CardTitle: 'АКТ 3 — 30 НОЧЕЙ В ПАРКЕ «МАЛИНКА»!',
+    act3CardSub: 'Выживи 30 ночей от большого Сани (×2), качай базу за металл и отбейся на 30-ю ночь!',
+    act3EnterBtn: 'ПЕРЕЙТИ К АКТУ 3: ПАРК «МАЛИНКА»',
     act2SecretBtn: 'Секрет: Показать вход Акта 2',
     act2VictoryTitle: 'АКТ 2 ПРОЙДЕН!',
     act2VictorySub: '20 грибных мивин произведено и упаковано!',
     act2VictorySaid: 'nikitys6666 запечатал ящик с мивиной:',
+    act3VictoryTitle: 'АКТ 3 ПРОЙДЕН!',
+    act3VictorySub: '30 ночей в парке «Малинка» прожиты! Армия RONER уничтожена!',
+    act3VictorySaid: 'nikitys6666 шагает в деревню «ДжоДжо»:',
     replayAct2: 'Пройти Акт 2 ещё раз',
+    replayAct3: 'Пройти Акт 3 ещё раз',
+    act3Badge: 'АКТ 3 · ПАРК «МАЛИНКА»',
+    act3NightLabel: 'Ночь',
+    act3DayWord: 'ДЕНЬ',
+    act3NightWord: 'НОЧЬ',
+    act3FireLabel: 'Костёр',
+    act3LogsLabel: 'Бревна',
+    act3MetalLabel: 'Металл',
+    act3BaseLevelLabel: 'База ур.',
+    act3MaxedLabel: 'МАКС. БАЗА',
+    act3BedReadyLabel: 'Кровать: Готова',
+    act3BedCooldownLabel: 'Кровать: КД 1 ночь',
+    act3BossLabel: 'БОСС БОЛЬШОЙ САНЯ',
+    act3RonerWaveLabel: 'Волна RONER',
+    act3Night30Objective: '30-Я НОЧЬ! Получена снайперка — побей Босса Саню и волну RONER [ЛКМ / E]!',
+    statNights: 'Ночей',
+    statBaseLv: 'Ур. базы',
     statMushrooms: 'Грибы',
+    statMivinas: 'Мивины',
+    statClones: 'Клоны',
     statTime: 'Время',
     statScared: 'Отпугнул',
     statBest: 'Рекорд',
