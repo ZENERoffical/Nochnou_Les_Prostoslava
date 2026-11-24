@@ -1,11 +1,12 @@
 import React from 'react';
 import { FastForward, Home } from 'lucide-react';
 import { getUiText } from '../game/localization';
-import { CutsceneSubtitle, GameLanguage } from '../types/game';
+import { CutsceneSubtitle, GameLanguage, GameMode } from '../types/game';
 
 interface CutsceneOverlayProps {
   subtitle: CutsceneSubtitle | null;
   language: GameLanguage;
+  mode?: GameMode;
   isSecretAct2?: boolean;
   onSkip: () => void;
   onExitToMenu: () => void;
@@ -14,6 +15,7 @@ interface CutsceneOverlayProps {
 export const CutsceneOverlay: React.FC<CutsceneOverlayProps> = ({
   subtitle,
   language,
+  mode = 'story_act1',
   isSecretAct2 = false,
   onSkip,
   onExitToMenu,
@@ -25,7 +27,11 @@ export const CutsceneOverlay: React.FC<CutsceneOverlayProps> = ({
       {/* Top cinematic bar */}
       <div className="flex items-center justify-between bg-black/90 px-5 py-3 border-b border-white/10">
         <div className="text-xs font-black uppercase tracking-widest text-amber-300">
-          {isSecretAct2 ? t.cutsceneSecret : t.cutsceneAct1}
+          {isSecretAct2
+            ? t.cutsceneSecret
+            : mode === 'story_act2'
+              ? t.cutsceneAct2
+              : t.cutsceneAct1}
         </div>
         <div className="flex items-center gap-2">
           {!isSecretAct2 && (

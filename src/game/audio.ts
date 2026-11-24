@@ -268,6 +268,272 @@ export class GameAudio {
     });
   }
 
+  public playBoxPickup(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    [310, 465, 620].forEach((f, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(f, now + idx * 0.05);
+      gain.gain.setValueAtTime(0.11, now + idx * 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.05 + 0.14);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + idx * 0.05);
+      osc.stop(now + idx * 0.05 + 0.15);
+    });
+  }
+
+  public playPlaceSachet(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(520, now);
+    osc.frequency.exponentialRampToValueAtTime(980, now + 0.09);
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.14);
+  }
+
+  public playTrayDrop(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    [587.33, 880].forEach((f, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f, now + idx * 0.05);
+      gain.gain.setValueAtTime(0.09, now + idx * 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.05 + 0.16);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + idx * 0.05);
+      osc.stop(now + idx * 0.05 + 0.17);
+    });
+  }
+
+  public playBrickReturn(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(240, now);
+    osc.frequency.exponentialRampToValueAtTime(140, now + 0.12);
+    gain.gain.setValueAtTime(0.07, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.14);
+  }
+
+  public playPackStamp(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const sub = ctx.createOscillator();
+    const subGain = ctx.createGain();
+    sub.type = 'sawtooth';
+    sub.frequency.setValueAtTime(160, now);
+    sub.frequency.exponentialRampToValueAtTime(48, now + 0.22);
+    subGain.gain.setValueAtTime(0.22, now);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+    sub.connect(subGain);
+    subGain.connect(ctx.destination);
+    sub.start(now);
+    sub.stop(now + 0.25);
+
+    const chime = ctx.createOscillator();
+    const chimeGain = ctx.createGain();
+    chime.type = 'triangle';
+    chime.frequency.setValueAtTime(784, now + 0.1);
+    chime.frequency.exponentialRampToValueAtTime(1174, now + 0.26);
+    chimeGain.gain.setValueAtTime(0.12, now + 0.1);
+    chimeGain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    chime.connect(chimeGain);
+    chimeGain.connect(ctx.destination);
+    chime.start(now + 0.1);
+    chime.stop(now + 0.31);
+  }
+
+  public playLockerToggle(enter: boolean): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(enter ? 240 : 160, now);
+    osc.frequency.exponentialRampToValueAtTime(enter ? 95 : 220, now + 0.14);
+    gain.gain.setValueAtTime(0.11, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.17);
+  }
+
+  public playLightFlicker(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(115, now);
+    osc.frequency.setValueAtTime(60, now + 0.04);
+    gain.gain.setValueAtTime(0.045, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.12);
+  }
+
+  public playWindowBang(broken = false): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = broken ? 'sawtooth' : 'triangle';
+    osc.frequency.setValueAtTime(broken ? 680 : 145, now);
+    osc.frequency.exponentialRampToValueAtTime(broken ? 95 : 52, now + (broken ? 0.32 : 0.16));
+    gain.gain.setValueAtTime(broken ? 0.2 : 0.14, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + (broken ? 0.34 : 0.18));
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + (broken ? 0.35 : 0.19));
+
+    if (broken) {
+      [1480, 1960, 2420].forEach((freq, idx) => {
+        const shard = ctx.createOscillator();
+        const sg = ctx.createGain();
+        shard.type = 'square';
+        shard.frequency.setValueAtTime(freq, now + idx * 0.035);
+        shard.frequency.exponentialRampToValueAtTime(freq * 0.65, now + idx * 0.035 + 0.12);
+        sg.gain.setValueAtTime(0.06, now + idx * 0.035);
+        sg.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.035 + 0.14);
+        shard.connect(sg);
+        sg.connect(ctx.destination);
+        shard.start(now + idx * 0.035);
+        shard.stop(now + idx * 0.035 + 0.15);
+      });
+    }
+  }
+
+  public playFactoryAlarmTick(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(520, now);
+    osc.frequency.linearRampToValueAtTime(760, now + 0.24);
+    osc.frequency.linearRampToValueAtTime(480, now + 0.45);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.08, now + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.46);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.48);
+  }
+
+  public playKeyUnlock(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    [587.33, 880, 1174.66, 1567.98].forEach((f, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(f, now + idx * 0.06);
+      gain.gain.setValueAtTime(0.12, now + idx * 0.06);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.24);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + idx * 0.06);
+      osc.stop(now + idx * 0.06 + 0.25);
+    });
+  }
+
+  public playDoorCreak(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(140, now);
+    osc.frequency.linearRampToValueAtTime(210, now + 0.28);
+    osc.frequency.linearRampToValueAtTime(110, now + 0.52);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.09, now + 0.06);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.57);
+  }
+
+  public playSniperShot(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    // Heavy rifle boom
+    const boom = ctx.createOscillator();
+    const boomGain = ctx.createGain();
+    boom.type = 'sawtooth';
+    boom.frequency.setValueAtTime(280, now);
+    boom.frequency.exponentialRampToValueAtTime(34, now + 0.42);
+    boomGain.gain.setValueAtTime(0.32, now);
+    boomGain.gain.exponentialRampToValueAtTime(0.001, now + 0.44);
+    boom.connect(boomGain);
+    boomGain.connect(ctx.destination);
+    boom.start(now);
+    boom.stop(now + 0.46);
+
+    // High-velocity crack + double MLG headshot hitmarker dings
+    const crack = ctx.createOscillator();
+    const crackGain = ctx.createGain();
+    crack.type = 'square';
+    crack.frequency.setValueAtTime(1950, now);
+    crack.frequency.exponentialRampToValueAtTime(260, now + 0.14);
+    crackGain.gain.setValueAtTime(0.2, now);
+    crackGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    crack.connect(crackGain);
+    crackGain.connect(ctx.destination);
+    crack.start(now);
+    crack.stop(now + 0.16);
+
+    [1680, 1980].forEach((freq, idx) => {
+      const ding = ctx.createOscillator();
+      const dg = ctx.createGain();
+      ding.type = 'sine';
+      ding.frequency.setValueAtTime(freq, now + 0.12 + idx * 0.12);
+      dg.gain.setValueAtTime(0.16, now + 0.12 + idx * 0.12);
+      dg.gain.exponentialRampToValueAtTime(0.001, now + 0.25 + idx * 0.12);
+      ding.connect(dg);
+      dg.connect(ctx.destination);
+      ding.start(now + 0.12 + idx * 0.12);
+      ding.stop(now + 0.26 + idx * 0.12);
+    });
+  }
+
   public playDialogueLine(
     text: string,
     pitch = 1.0,

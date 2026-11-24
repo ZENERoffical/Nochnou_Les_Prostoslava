@@ -2,9 +2,9 @@ import React from 'react';
 import {
   CheckCircle2,
   Eye,
+  Factory,
   Flame,
   Home,
-  Lock,
   Play,
   RotateCcw,
   Settings,
@@ -94,6 +94,9 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   }
 
   if (hud.phase === 'victory') {
+    const isAct2Victory = hud.mode === 'story_act2';
+    const act2Quote = getCutsceneLine('act2_outro_0', hud.settings).display;
+
     return (
       <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/78 p-4">
         <div className="w-full max-w-md rounded-2xl border-2 border-emerald-400 bg-[#0b1812] p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.85)]">
@@ -102,64 +105,76 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
           </div>
 
           <h2 className="text-3xl font-black tracking-wider text-emerald-300">
-            {t.victoryTitle}
+            {isAct2Victory ? t.act2VictoryTitle : t.victoryTitle}
           </h2>
           <p className="mt-1 text-sm font-bold text-amber-200">
-            {t.victorySub}
+            {isAct2Victory ? t.act2VictorySub : t.victorySub}
           </p>
 
           <div className="mt-3 rounded-xl border border-emerald-400/35 bg-[#12261b] px-4 py-3">
             <div className="text-xs font-bold uppercase tracking-wider text-emerald-300">
-              {t.victorySaidPrefix}
+              {isAct2Victory ? t.act2VictorySaid : t.victorySaidPrefix}
             </div>
             <div className="mt-1 text-base font-black text-white">
-              «{outroQuote}»
+              «{isAct2Victory ? act2Quote : outroQuote}»
             </div>
           </div>
 
-          {/* Act 2 Teaser Card */}
-          <div className="mt-4 rounded-xl border border-amber-400/45 bg-[#1b1710] p-4">
-            <div className="flex items-center justify-center gap-2 text-amber-300 font-black text-lg">
-              <Lock className="h-5 w-5" />
-              {t.act2CardTitle}
+          {!isAct2Victory && (
+            <div className="mt-4 rounded-xl border border-sky-400/45 bg-[#101924] p-4">
+              <div className="flex items-center justify-center gap-2 text-sky-300 font-black text-lg">
+                <Factory className="h-5 w-5" />
+                {t.act2CardTitle}
+              </div>
+              <div className="mt-1 text-xs text-slate-300">
+                {t.act2CardSub}
+              </div>
+              <button
+                type="button"
+                onClick={() => onRestart('story_act2')}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-sky-400 hover:bg-sky-300 active:scale-95 px-5 py-3 text-sm font-black text-slate-950 shadow-lg transition-all cursor-pointer"
+              >
+                <Play className="h-4 w-4 fill-current" />
+                {t.act2EnterBtn}
+              </button>
+              <button
+                type="button"
+                onClick={onOpenAct2Secret}
+                className="mt-2 inline-flex items-center justify-center gap-1.5 rounded-lg border border-amber-400/40 bg-amber-500/15 hover:bg-amber-500/25 px-3 py-1 text-[11px] font-bold text-amber-200 transition-colors cursor-pointer"
+              >
+                <Sparkles className="h-3 w-3" />
+                {t.act2SecretBtn}
+              </button>
             </div>
-            <div className="mt-1 text-xs text-slate-300">
-              {t.act2CardSub}
-            </div>
-            <button
-              type="button"
-              onClick={onOpenAct2Secret}
-              className="mt-2.5 inline-flex items-center justify-center gap-1.5 rounded-lg border border-amber-400/50 bg-amber-500/20 hover:bg-amber-500/30 px-3.5 py-1.5 text-xs font-black text-amber-200 transition-colors cursor-pointer"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              {t.act2SecretBtn}
-            </button>
-          </div>
+          )}
 
           <div className="mt-4 grid grid-cols-3 gap-2 rounded-xl border border-white/10 bg-[#0f1f17] p-3 text-center">
             <div>
               <div className="text-[10px] font-bold uppercase text-slate-400">
-                {t.statMushrooms}
+                {isAct2Victory ? t.statPacked : t.statMushrooms}
               </div>
               <div className="text-lg font-black tabular-nums text-emerald-300">
-                {hud.mushrooms}
+                {isAct2Victory ? `${hud.noodlesPacked}/20` : hud.mushrooms}
               </div>
             </div>
             <div>
               <div className="text-[10px] font-bold uppercase text-slate-400">
-                {t.statTime}
+                {isAct2Victory ? t.statBoxes : t.statTime}
               </div>
               <div className="text-lg font-black tabular-nums text-white">
-                {hud.elapsedSeconds}
-                {hud.settings.language === 'en' ? 's' : 'с'}
+                {isAct2Victory
+                  ? hud.boxesFound
+                  : `${hud.elapsedSeconds}${hud.settings.language === 'en' ? 's' : 'с'}`}
               </div>
             </div>
             <div>
               <div className="text-[10px] font-bold uppercase text-slate-400">
-                {t.statScared}
+                {isAct2Victory ? t.statTime : t.statScared}
               </div>
               <div className="text-lg font-black tabular-nums text-sky-300">
-                {hud.flashlightStuns}
+                {isAct2Victory
+                  ? `${hud.elapsedSeconds}${hud.settings.language === 'en' ? 's' : 'с'}`
+                  : hud.flashlightStuns}
               </div>
             </div>
           </div>
@@ -167,11 +182,11 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
           <div className="mt-5 flex flex-col gap-2.5">
             <button
               type="button"
-              onClick={() => onRestart('story_act1')}
+              onClick={() => onRestart(isAct2Victory ? 'story_act2' : 'story_act1')}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-95 px-6 py-3.5 text-base font-black text-slate-950 shadow-lg transition-all cursor-pointer"
             >
               <RotateCcw className="h-5 w-5" />
-              {t.replayAct1}
+              {isAct2Victory ? t.replayAct2 : t.replayAct1}
             </button>
             <button
               type="button"
@@ -203,9 +218,11 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   const modeLabelText =
     hud.mode === 'story_act1'
       ? t.modeStory
-      : hud.mode === 'hardcore_third_person'
-        ? t.hardcoreEndlessBtn
-        : t.fpEndlessBtn;
+      : hud.mode === 'story_act2'
+        ? t.modeStory2
+        : hud.mode === 'hardcore_third_person'
+          ? t.hardcoreEndlessBtn
+          : t.fpEndlessBtn;
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/78 p-4">

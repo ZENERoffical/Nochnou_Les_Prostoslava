@@ -23,6 +23,8 @@ export interface RobloxRig {
   rightLeg: THREE.Group;
   leftWing?: THREE.Group;
   rightWing?: THREE.Group;
+  blindfold?: THREE.Group;
+  angryBrows?: THREE.Group;
   nameTag: THREE.Sprite;
   walkPhase: number;
 }
@@ -396,6 +398,19 @@ export function createRoner552(anisotropy: number): RobloxRig {
   pinYellow.position.set(0.24, 0.45, 0.08);
   head.add(pinBlue, pinYellow);
 
+  // Angry furrowed eyebrows (toggled on in Act 2)
+  const angryBrows = new THREE.Group();
+  const browMat = new THREE.MeshStandardMaterial({ color: 0x3b1d0a, roughness: 0.65 });
+  const browL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.055, 0.06), browMat);
+  browL.position.set(-0.13, 0.16, 0.31);
+  browL.rotation.z = -0.34;
+  const browR = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.055, 0.06), browMat);
+  browR.position.set(0.13, 0.16, 0.31);
+  browR.rotation.z = 0.34;
+  angryBrows.add(browL, browR);
+  angryBrows.visible = false;
+  head.add(angryBrows);
+
   enableShadows(bodyPivot);
   root.add(bodyPivot);
 
@@ -412,6 +427,7 @@ export function createRoner552(anisotropy: number): RobloxRig {
     rightArm,
     leftLeg,
     rightLeg,
+    angryBrows,
     nameTag,
     walkPhase: 1.5,
   };
@@ -594,6 +610,39 @@ export function createSasha55kXL(anisotropy: number): RobloxRig {
   const rightWing = makeIceWing(1);
   torso.add(leftWing, rightWing);
 
+  // Act 2 Blindfold (перевязанные глаза) + Angry furrowed eyebrows
+  const blindfold = new THREE.Group();
+  const clothMat = new THREE.MeshStandardMaterial({
+    color: 0x7f1d1d,
+    roughness: 0.85,
+    metalness: 0.05,
+  });
+  const wrapBand = new THREE.Mesh(new THREE.BoxGeometry(0.63, 0.17, 0.62), clothMat);
+  wrapBand.position.set(0, 0.04, 0.0);
+  const knot = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.13, 0.12), clothMat);
+  knot.position.set(0, 0.04, -0.33);
+  const tailL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.28, 0.04), clothMat);
+  tailL.position.set(-0.07, -0.09, -0.36);
+  tailL.rotation.z = 0.25;
+  const tailR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.26, 0.04), clothMat);
+  tailR.position.set(0.07, -0.08, -0.36);
+  tailR.rotation.z = -0.25;
+  blindfold.add(wrapBand, knot, tailL, tailR);
+  blindfold.visible = false;
+  head.add(blindfold);
+
+  const angryBrows = new THREE.Group();
+  const browMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.7 });
+  const browL = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.05, 0.06), browMat);
+  browL.position.set(-0.13, 0.16, 0.31);
+  browL.rotation.z = -0.36;
+  const browR = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.05, 0.06), browMat);
+  browR.position.set(0.13, 0.16, 0.31);
+  browR.rotation.z = 0.36;
+  angryBrows.add(browL, browR);
+  angryBrows.visible = false;
+  head.add(angryBrows);
+
   enableShadows(bodyPivot);
   root.add(bodyPivot);
 
@@ -612,6 +661,8 @@ export function createSasha55kXL(anisotropy: number): RobloxRig {
     rightLeg,
     leftWing,
     rightWing,
+    blindfold,
+    angryBrows,
     nameTag,
     walkPhase: 3.1,
   };

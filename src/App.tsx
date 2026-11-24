@@ -38,6 +38,20 @@ const INITIAL_HUD: HudSnapshot = {
   speedBoostActive: false,
   eventBanner: null,
   cutsceneSubtitle: null,
+  act2Stage: 'conveyor',
+  noodlesSeasoned: 0,
+  noodlesPacked: 0,
+  noodlesTarget: 20,
+  packetsInHand: 0,
+  boxesFound: 0,
+  mushroomStock: 40,
+  hasCorridorKey: false,
+  corridorProgress: 0,
+  interactPrompt: null,
+  isHidingInLocker: false,
+  lightsFlickering: false,
+  factoryAlarmActive: false,
+  windowBreachProgress: 0,
 };
 
 export default function App() {
@@ -119,10 +133,17 @@ export default function App() {
     engineRef.current?.setVirtualSprint(sprint);
   }, []);
 
+  const handleInteract = useCallback(() => {
+    engineRef.current?.interactFactory();
+  }, []);
+
   const isCutscene =
     hud.phase === 'intro_cutscene' ||
     hud.phase === 'outro_cutscene' ||
-    hud.phase === 'act2_teaser';
+    hud.phase === 'act2_teaser' ||
+    hud.phase === 'act2_intro_cutscene' ||
+    hud.phase === 'act2_door_cutscene' ||
+    hud.phase === 'act2_outro_cutscene';
 
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-[#071018]">
@@ -149,6 +170,7 @@ export default function App() {
           <CutsceneOverlay
             subtitle={hud.cutsceneSubtitle}
             language={hud.settings.language}
+            mode={hud.mode}
             isSecretAct2={hud.phase === 'act2_teaser'}
             onSkip={handleSkipCutscene}
             onExitToMenu={handleExitToMenu}
@@ -169,6 +191,7 @@ export default function App() {
             onVirtualMove={handleVirtualMove}
             onVirtualJump={handleVirtualJump}
             onVirtualSprint={handleVirtualSprint}
+            onInteract={handleInteract}
           />
         </>
       )}

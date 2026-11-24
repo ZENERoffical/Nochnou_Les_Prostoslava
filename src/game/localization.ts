@@ -151,7 +151,16 @@ export type CutsceneLineKey =
   | 'intro_3'
   | 'outro_0'
   | 'act2_teaser'
-  | 'act2_secret';
+  | 'act2_secret'
+  | 'act2_intro_0'
+  | 'act2_intro_1'
+  | 'act2_intro_2a'
+  | 'act2_intro_2b'
+  | 'act2_intro_2c'
+  | 'act2_door_0'
+  | 'act2_door_1'
+  | 'act2_final_0'
+  | 'act2_outro_0';
 
 export function getCutsceneLine(
   key: CutsceneLineKey,
@@ -360,11 +369,326 @@ export function getCutsceneLine(
         display: 'Двери завода «Мивина Корпорейшен» слегка приоткрыты... Пройди Акт 1 (1000м), чтобы добраться сюда!',
         speech: 'Двери завода Мивина Корпорейшен слегка приоткрыты. Пройди Акт один, чтобы добраться сюда!',
       };
+
+    case 'act2_intro_0':
+      if (isEn) {
+        if (settings.familyMode) {
+          return {
+            display: 'Phew, I outran those crazy pranksters!',
+            speech: 'Phew, I outran those crazy pranksters!',
+          };
+        }
+        if (censored) {
+          return {
+            display: 'Phew, I escaped from those [***]!',
+            speech: 'Phew, I escaped from those!',
+            hasCensorBeep: true,
+          };
+        }
+        return {
+          display: 'Phew, I escaped from those Ebanatov!',
+          speech: 'Phew, I escaped from those Ebanatov!',
+        };
+      }
+      if (settings.familyMode) {
+        return {
+          display: 'Фух, я убежал от этих озорников!',
+          speech: 'Фух, я убежал от этих озорников!',
+        };
+      }
+      if (censored) {
+        return {
+          display: 'Фух я убежал от етих [***]',
+          speech: 'Фух, я убежал от этих пип!',
+          hasCensorBeep: true,
+        };
+      }
+      return {
+        display: 'Фух я убежал от етих Ebanatov',
+        speech: 'Фух, я убежал от этих ебанатов!',
+      };
+
+    case 'act2_intro_1':
+      if (isEn) {
+        if (settings.familyMode) {
+          return {
+            display: 'OH AWESOME!! FINALLY I CAN MAKE MY MIVINA!!!!!!',
+            speech: 'Oh awesome! Finally I can make my Mivina!',
+          };
+        }
+        if (censored) {
+          return {
+            display: 'OH [***]!! FINALLY MAKING MIVINA!!!!!!',
+            speech: 'Oh! Finally making Mivina!',
+            hasCensorBeep: true,
+          };
+        }
+        return {
+          display: 'OH NIXYA!! FINALLY MAKING MIVINA!!!!!!',
+          speech: 'Oh nixya! Finally making Mivina!',
+        };
+      }
+      if (settings.familyMode) {
+        return {
+          display: 'ОГО ВОТ ЭТО ДА, НАКОНЕЦ-ТО СОБЕРУ МИВИНУ!!!!!!',
+          speech: 'Ого вот это да, наконец-то соберу мивину!',
+        };
+      }
+      if (censored) {
+        return {
+          display: 'ОХ [ЦЕНЗУРА] НАКОНЕЦТО СОБЕРУ МИВИНУ!!!!!!',
+          speech: 'Ох пип, наконец-то соберу мивину!',
+          hasCensorBeep: true,
+        };
+      }
+      return {
+        display: 'ОХ NIXYA НАКОНЕЦТО СОБЕРУ МИВИНУ!!!!!!',
+        speech: 'Ох нихуя, наконец-то соберу мивину!',
+      };
+
+    case 'act2_intro_2a':
+      if (isEn) {
+        if (settings.familyMode) {
+          return {
+            display: 'Hey!! Did you lose your mind?!',
+            speech: 'Hey! Did you lose your mind?',
+          };
+        }
+        if (censored) {
+          return {
+            display: 'Are you completely [***]?!',
+            speech: 'Are you completely!',
+            hasCensorBeep: true,
+          };
+        }
+        return {
+          display: 'You totally Axyel?!',
+          speech: 'You totally axyel?',
+        };
+      }
+      if (settings.familyMode) {
+        return {
+          display: 'Ты что совсем обалдел?!',
+          speech: 'Ты что совсем обалдел?',
+        };
+      }
+      if (censored) {
+        return {
+          display: 'Ты чо савсем [***]?!',
+          speech: 'Ты чо совсем пип?',
+          hasCensorBeep: true,
+        };
+      }
+      return {
+        display: 'Ты чо савсем Axyel?!',
+        speech: 'Ты чо совсем ахуел?',
+      };
+
+    case 'act2_intro_2b':
+      if (isEn) {
+        if (settings.familyMode) {
+          return {
+            display: 'Shining that bright beam right in my eyes!',
+            speech: 'Shining that bright beam right in my eyes!',
+          };
+        }
+        if (censored) {
+          return {
+            display: 'Shining in my eyes, [***]!',
+            speech: 'Shining in my eyes!',
+            hasCensorBeep: true,
+          };
+        }
+        return {
+          display: 'Shining in my eyes, Blyat!',
+          speech: 'Shining in my eyes, blyat!',
+        };
+      }
+      if (settings.familyMode) {
+        return {
+          display: 'В глаза светить вздумал, а?!',
+          speech: 'В глаза светить вздумал, а?',
+        };
+      }
+      if (censored) {
+        return {
+          display: 'В глаза светить [***]',
+          speech: 'В глаза светить пип!',
+          hasCensorBeep: true,
+        };
+      }
+      return {
+        display: 'В глаза светить Blyat',
+        speech: 'В глаза светить блять!',
+      };
+
+    case 'act2_intro_2c':
+      if (isEn) {
+        if (settings.familyMode) {
+          return {
+            display: 'That is it, you are in big trouble now!!',
+            speech: 'That is it, you are in big trouble now!',
+          };
+        }
+        if (censored) {
+          return {
+            display: 'Alright that is it, [***] [***]!',
+            speech: 'Alright that is it!',
+            hasCensorBeep: true,
+          };
+        }
+        return {
+          display: 'Alright you are done, Pizda Pidor Konchenu!',
+          speech: 'Alright you are done, Pizda Pidor Konchenu!',
+        };
+      }
+      if (settings.familyMode) {
+        return {
+          display: 'Ну всё, держись, мы ещё до тебя доберёмся!',
+          speech: 'Ну всё, держись, мы ещё до тебя доберёмся!',
+        };
+      }
+      if (censored) {
+        return {
+          display: 'Ну все тебе [ЦЕНЗУРА]!',
+          speech: 'Ну всё тебе пип!',
+          hasCensorBeep: true,
+        };
+      }
+      return {
+        display: 'Ну все тебе Pizda Pidor Konchenu',
+        speech: 'Ну всё тебе пизда пидор конченый!',
+      };
+
+    case 'act2_door_0':
+      if (isEn) {
+        if (settings.familyMode) {
+          return {
+            display: 'Wait, what do you mean there is ANOTHER door?!',
+            speech: 'Wait, what do you mean there is another door?',
+          };
+        }
+        return {
+          display: 'Wait... why is there ANOTHER door?!',
+          speech: 'Wait, why is there another door?',
+        };
+      }
+      if (settings.familyMode) {
+        return {
+          display: 'Ой, в смысле, ещё одна дверь?!',
+          speech: 'Ой, в смысле, ещё одна дверь?',
+        };
+      }
+      return {
+        display: 'е всмысле ищо одна дверь',
+        speech: 'Э, в смысле, ещё одна дверь?',
+      };
+
+    case 'act2_door_1':
+      if (isEn) {
+        if (settings.familyMode) {
+          return {
+            display: 'Whoa... what is this super long hallway?!',
+            speech: 'Whoa, what is this super long hallway?',
+          };
+        }
+        if (censored) {
+          return {
+            display: '[***]... what the heck is this?!',
+            speech: 'What the heck is this?',
+            hasCensorBeep: true,
+          };
+        }
+        return {
+          display: 'Pizdet... what is this xyuna?!',
+          speech: 'Pizdet, what is this xyuna?',
+        };
+      }
+      if (settings.familyMode) {
+        return {
+          display: 'ОГО... это что за длиннющий коридор?!',
+          speech: 'Ого, это что за длиннющий коридор?',
+        };
+      }
+      if (censored) {
+        return {
+          display: '[ЦЕНЗУРА]... ето чо за [***]?!',
+          speech: 'Пип, это чо за пип?',
+          hasCensorBeep: true,
+        };
+      }
+      return {
+        display: 'Pizdet... ето чо за xyuna?!',
+        speech: 'Пиздец... это чо за хуйня?!',
+      };
+
+    case 'act2_final_0':
+      if (isEn) {
+        if (settings.familyMode) {
+          return {
+            display: 'Alright, game over for them >:)',
+            speech: 'Alright, game over for them!',
+          };
+        }
+        if (censored) {
+          return {
+            display: 'Now they are totally [***] >:)',
+            speech: 'Now they are totally finished!',
+            hasCensorBeep: true,
+          };
+        }
+        return {
+          display: 'Now it is Pizda for them >:)',
+          speech: 'Now it is Pizda for them!',
+        };
+      }
+      if (settings.familyMode) {
+        return {
+          display: 'Ну всё, держитесь, проказники >:)',
+          speech: 'Ну всё, держитесь, проказники!',
+        };
+      }
+      if (censored) {
+        return {
+          display: 'ну все им [ЦЕНЗУРА] >:)',
+          speech: 'Ну всё им пип!',
+          hasCensorBeep: true,
+        };
+      }
+      return {
+        display: 'ну все им Pizda >:)',
+        speech: 'Ну всё, им пизда!',
+      };
+
+    case 'act2_outro_0':
+      if (isEn) {
+        if (settings.familyMode) {
+          return {
+            display: '360 SNIPER TAG!! EXIT LOL, SEE YA LATER!',
+            speech: 'Three sixty sniper tag! Exit lol, see you later!',
+          };
+        }
+        return {
+          display: '360 HEADSHOT!! EXIT LOL, BYE LOSERS!',
+          speech: 'Three sixty headshot! Exit lol, bye losers!',
+        };
+      }
+      if (settings.familyMode) {
+        return {
+          display: '360 СНАЙПЕР-САЛКИ!! ВЫХОД ЛОЛ, ДО ВСТРЕЧИ!',
+          speech: 'Триста шестьдесят снайпер салки! Выход лол, до встречи!',
+        };
+      }
+      return {
+        display: '360 ХЕДШОТ!! ВЫХОД ЛОЛ, ПОКА ПРИКОЛЬДЕСЫ!',
+        speech: 'Триста шестьдесят хедшот! Выход лол, пока прикольдесы!',
+      };
   }
 }
 
 const MEME_WORD_PHONETICS: Array<[RegExp, string]> = [
   [/\beblan\b/gi, 'еблан'],
+  [/\bebanatov\b/gi, 'ебанатов'],
   [/\bohco\b/gi, 'очко'],
   [/\bpezdu\b/gi, 'пизду'],
   [/\bcyka\b/gi, 'сука'],
@@ -372,6 +696,14 @@ const MEME_WORD_PHONETICS: Array<[RegExp, string]> = [
   [/\bteba\b/gi, 'тебя'],
   [/\bmognem\b/gi, 'могнём'],
   [/\bhaxyu\b/gi, 'нахуй'],
+  [/\bnixya\b/gi, 'нихуя'],
+  [/\baxyel\b/gi, 'ахуел'],
+  [/\bblyat\b/gi, 'блять'],
+  [/\bpizda\b/gi, 'пизда'],
+  [/\bpizdet\b/gi, 'пиздец'],
+  [/\bxyuna\b/gi, 'хуйня'],
+  [/\bpidor\b/gi, 'пидор'],
+  [/\bkonchenu\b/gi, 'конченый'],
   [/\bnikitys6666\b/gi, 'никитус шесть шесть шесть'],
   [/\broner_?552\b/gi, 'ронер'],
   [/\bsasha55k_?xl\b/gi, 'саша'],
@@ -458,6 +790,42 @@ const EN_WORD_PHONETICS: Record<string, string> = {
   soup: 'суп',
   okay: 'окей',
   share: 'шэйр',
+  conveyor: 'конвейер',
+  seasoning: 'сизонинг',
+  season: 'сизон',
+  packet: 'пэкет',
+  packets: 'пэкетс',
+  box: 'бокс',
+  boxes: 'боксис',
+  pack: 'пэк',
+  packed: 'пэкт',
+  press: 'пресс',
+  twenty: 'твенти',
+  forty: 'форти',
+  turn: 'тёрн',
+  into: 'инту',
+  grab: 'грэб',
+  drop: 'дроп',
+  onto: 'онту',
+  seal: 'сил',
+  made: 'мэйд',
+  time: 'тайм',
+  fire: 'файр',
+  up: 'ап',
+  find: 'файнд',
+  them: 'зем',
+  all: 'ол',
+  awesome: 'осом',
+  ready: 'рэди',
+  best: 'бест',
+  ever: 'эвер',
+  delicious: 'делишес',
+  let: 'лет',
+  stay: 'стэй',
+  hungry: 'хангри',
+  outside: 'аутсайд',
+  mivinas: 'мивинас',
+  into2: 'инту',
 };
 
 function englishWordToRussianSyllables(word: string): string {
@@ -550,46 +918,70 @@ export function getUiText(lang: GameLanguage) {
     return {
       titleTop: 'NIGHT FOREST',
       titleBottom: 'PROSTOPHILYA',
-      titleSubtitle: "The Adventures of Nikita · Mivina Mushroom Quest",
+      titleSubtitle: 'The Adventures of Nikita: Off to the Mivina Factory',
       muteLabel: 'Mute sound',
       unmuteLabel: 'Unmute sound',
       settingsBtn: 'Settings',
       modeStory: 'Story · Act 1',
-      modeAct2Title: 'Act 2 · Soon!',
-      modeAct2Sub: 'Secret: Entrance',
+      modeStory2: 'Story · Act 2',
+      modeAct2Title: 'Act 2 · Factory',
+      modeAct2Sub: '20 Mivinas + Corridor',
       modeAct2Tooltip: 'Secret: peek at Mivina Corporation factory entrance',
+      act2SecretLink: 'Secret: Entrance',
       modeFP: '1st Person',
       modeHardcore: 'Hardcore 3rd',
       endless: 'Endless',
       record: 'Best',
       descStory:
         'Act 1 (1000m): Cross the foggy 1000m road, grab 40 mushrooms, charge your flashlight and reach Mivina Corporation!',
+      descStory2:
+        'Act 2 (Factory): Pack 20 Mivinas for the Key, unlock the padlocked door, survive the long corridor hiding in closets [E] from Sasha, and grab the sniper at «Exit LOL»!',
       descFP:
         'Endless Mode (1st Person): Shine flashlight [F] at RONER_552 and sasha55k_XL and beat your best score!',
       descHardcore:
         'Endless Mode (Hardcore 3rd Person): Faster, angrier chasers — survive as long as you can!',
       playBtn: 'PLAY',
       controlsTitle:
-        'WASD Move · Shift Sprint · Space Jump · F Flashlight · Mouse/Q,E Camera',
+        'WASD Move · Shift Sprint · Space Jump · F Flashlight · E/LMB Interact',
       controlsHud:
-        'WASD Move · Shift Run · Space Jump · F/RMB Light · Mouse/Q,E Look · Esc Pause',
+        'WASD Move · Shift Run · Space Jump · F/RMB Light · Mouse Look · Esc Pause',
+      controlsHudAct2:
+        'WASD Move · E/LMB Box / Season / Closet / Pack / Door · F Flash Window · Esc Pause',
       hideControls: 'Hide controls',
       showControls: 'Controls',
       mushroomName: 'Prostophilya',
       badgeHardcore: 'HARDCORE 3RD · ENDLESS',
       badgeStory: 'ACT 1',
+      badgeStory2: 'ACT 2 · FACTORY',
       badgeFP: '1ST PERSON · ENDLESS',
       factoryShort: 'Mivina Corp.:',
       panther: 'PANTHER!',
       stamina: 'Stamina',
       battery: 'Battery',
       dangerNearby: 'Chaser nearby:',
+      act2Badge: 'ACT 2 · MIVINA CORP.',
+      act2SeasonedLabel: 'Seasoned',
+      act2PackedLabel: 'Packed',
+      act2PacketsLabel: 'Packets',
+      act2MushroomsStock: 'Mushrooms',
+      act2KeyBadge: 'CORRIDOR KEY',
+      act2StageConveyor: 'Stage 1: Season 20 noodles on conveyor',
+      act2StagePackaging: 'Stage 2: Pack 20 Mivinas at the Press to earn the Key!',
+      act2StageCorridorKey: 'Stage 3: Key earned! Unlock the North Wing door',
+      act2StageCorridor: 'Stage 4: Walk the long corridor, hide in closets [E], find «Exit LOL»!',
+      act2CorridorProgressLabel: 'Exit LOL',
+      act2TouchInteract: 'ACT (E)',
+      act2HidingBadge: 'HIDING IN CLOSET · [E / CLICK] EXIT',
+      act2FlickerWarning: 'LIGHTS FLICKERING! Blindfolded Sasha is coming — HIDE IN A CLOSET [E]!',
+      act2AlarmWarning: 'ALARM! RONER is breaking a window — SHINE FLASHLIGHT [F] ON HIM!',
+      act2WindowBreachLabel: 'Window breach',
       pauseTitle: 'PAUSE',
       collectedLabel: 'Mushrooms collected:',
       resumeBtn: 'RESUME',
       restartBtn: 'RESTART',
       menuBtn: 'MAIN MENU',
       cutsceneAct1: 'STORY · ACT 1',
+      cutsceneAct2: 'THE ADVENTURES OF NIKITA · OFF TO THE MIVINA FACTORY',
       cutsceneSecret: 'SECRET · ACT 2 PREVIEW — «MIVINA CORPORATION»',
       skipBtn: 'Skip',
       menuShort: 'Menu',
@@ -598,13 +990,20 @@ export function getUiText(lang: GameLanguage) {
       victoryTitle: 'ACT 1 COMPLETE!',
       victorySub: 'The mushrooms for Mivina are saved!',
       victorySaidPrefix: 'nikitys6666 escaped into «Mivina Corporation»:',
-      act2CardTitle: 'ACT 2 — COMING SOON!!',
-      act2CardSub: 'Mivina Corporation factory entrance is open...',
-      act2SecretBtn: 'Secret: Show Act 2 Entrance',
+      act2CardTitle: 'ACT 2 — MIVINA FACTORY READY!',
+      act2CardSub: 'Turn your mushrooms into 20 packed Mivinas on the factory floor!',
+      act2EnterBtn: 'CONTINUE TO ACT 2: FACTORY',
+      act2SecretBtn: 'Secret: Show Factory Entrance',
+      act2VictoryTitle: 'ACT 2 COMPLETE!',
+      act2VictorySub: '20 Mushroom Mivinas crafted and packed!',
+      act2VictorySaid: 'nikitys6666 sealed the export crate:',
+      replayAct2: 'Play Act 2 Again',
       statMushrooms: 'Mushrooms',
       statTime: 'Time',
       statScared: 'Flashed',
       statBest: 'Best',
+      statBoxes: 'Boxes',
+      statPacked: 'Packed',
       replayAct1: 'Play Act 1 Again',
       hardcoreEndlessBtn: 'Hardcore 3rd Person (Endless)',
       fpEndlessBtn: '1st Person (Endless)',
@@ -632,46 +1031,70 @@ export function getUiText(lang: GameLanguage) {
   return {
     titleTop: 'НОЧНОЙ ЛЕС',
     titleBottom: 'ПРОСТОФИЛЯ',
-    titleSubtitle: 'Похождения Никиты · За грибами для мивины',
+    titleSubtitle: 'Похождения Никиты: За мивиной на завод',
     muteLabel: 'Выключить звук',
     unmuteLabel: 'Включить звук',
     settingsBtn: 'Настройки',
     modeStory: 'История · Акт 1',
-    modeAct2Title: 'Акт 2 · Скоро!',
-    modeAct2Sub: 'Секрет: Вход',
+    modeStory2: 'История · Акт 2',
+    modeAct2Title: 'Акт 2 · Завод',
+    modeAct2Sub: '20 мивин + Коридор',
     modeAct2Tooltip: 'Секрет: посмотреть вход на завод «Мивина Корпорейшен»',
+    act2SecretLink: 'Секрет: Вход на завод',
     modeFP: '1-е лицо',
     modeHardcore: 'Хардкор 3-е',
     endless: 'Бесконечный',
     record: 'Рекорд',
     descStory:
       'Акт 1 (1000м): Пройди длинную туманную дорогу, собери 40 грибов, заряжай фонарик и добеги до завода «Мивина Корпорейшен»!',
+    descStory2:
+      'Акт 2 (Завод): Упакуй 20 мивин и получи ключ, открой дверь с замком, пройди длинный коридор прячась в шкаф [E] от Сани и найди «Выход лол»!',
     descFP:
       'Бесконечный режим (1-е лицо): свети фонариком [F] на RONER_552 и sasha55k_XL и ставь рекорд!',
     descHardcore:
       'Бесконечный режим (Хардкор 3-е лицо): враги быстрее и злее, продержись как можно дольше!',
     playBtn: 'ИГРАТЬ',
     controlsTitle:
-      'WASD Идти · Shift Рывок · Space Прыжок · F Фонарик · Мышь/Q,E Камера',
+      'WASD Идти · Shift Рывок · Space Прыжок · F Фонарик · E/ЛКМ Действие',
     controlsHud:
       'WASD Идти · Shift Бег · Space Прыжок · F/ПКМ Фонарик · Мышь/Q,E Камера · Esc Пауза',
+    controlsHudAct2:
+      'WASD Идти · E/ЛКМ Коробка / Шкаф / Лапша / Пресс / Дверь · F Светить в окно · Esc Пауза',
     hideControls: 'Скрыть управление',
     showControls: 'Управление',
     mushroomName: 'Простофиля',
     badgeHardcore: 'ХАРДКОР 3-Е · БЕСК.',
     badgeStory: 'АКТ 1',
+    badgeStory2: 'АКТ 2 · ЗАВОД',
     badgeFP: '1-Е ЛИЦО · БЕСК.',
     factoryShort: 'Мивина Корп.:',
     panther: 'ПАНТЕРА!',
     stamina: 'Выносливость',
     battery: 'Батарея',
     dangerNearby: 'Погоня рядом:',
+    act2Badge: 'АКТ 2 · МИВИНА КОРП.',
+    act2SeasonedLabel: 'С приправой',
+    act2PackedLabel: 'Упаковано',
+    act2PacketsLabel: 'Пакетики',
+    act2MushroomsStock: 'Грибы',
+    act2KeyBadge: 'КЛЮЧ ОТ ДВЕРИ',
+    act2StageConveyor: 'Этап 1: Разложи приправу на 20 кубиков лапши',
+    act2StagePackaging: 'Этап 2: Иди к прессу и упакуй 20 мивин за ключ!',
+    act2StageCorridorKey: 'Этап 3: Ключ получен! Открой дверь с замком в северном цехе',
+    act2StageCorridor: 'Этап 4: Иди по длинному коридору, прячься в шкаф [E] от Сани, дойди до «Выход лол»!',
+    act2CorridorProgressLabel: 'Выход лол',
+    act2TouchInteract: 'ДЕЙСТВ. (E)',
+    act2HidingBadge: 'ТЫ В ШКАФУ · [E / ЛКМ] ВЫЙТИ',
+    act2FlickerWarning: 'СВЕТ МИГАЕТ! Идёт слепой Саня — ПРЯЧЬСЯ В ШКАФ [E]!',
+    act2AlarmWarning: 'ТРЕВОГА! RONER лезет в окно — СВЕТИ НА НЕГО ФОНАРИКОМ [F]!',
+    act2WindowBreachLabel: 'Взлом окна',
     pauseTitle: 'ПАУЗА',
     collectedLabel: 'Грибов собрано:',
     resumeBtn: 'ПРОДОЛЖИТЬ',
     restartBtn: 'ЗАНОВО',
     menuBtn: 'НА ГЛАВНЫЙ ЭКРАН',
     cutsceneAct1: 'ИСТОРИЯ · АКТ 1',
+    cutsceneAct2: 'ПОХОЖДЕНИЯ НИКИТЫ · ЗА МИВИНОЙ НА ЗАВОД',
     cutsceneSecret: 'СЕКРЕТ · НАЧАЛО АКТА 2 — «МИВИНА КОРПОРЕЙШЕН»',
     skipBtn: 'Пропустить',
     menuShort: 'Меню',
@@ -680,13 +1103,20 @@ export function getUiText(lang: GameLanguage) {
     victoryTitle: 'АКТ 1 ПРОЙДЕН!',
     victorySub: 'Грибы для мивины спасены!',
     victorySaidPrefix: 'nikitys6666 убежал в «Мивина Корпорейшен»:',
-    act2CardTitle: 'АКТ 2 — СКОРО БУДЕТ!!',
-    act2CardSub: 'Вход на завод «Мивина Корпорейшен» уже открыт...',
+    act2CardTitle: 'АКТ 2 — ЗАВОД «МИВИНА КОРПОРЕЙШЕН»!',
+    act2CardSub: 'Сделай из собранных грибов 20 мивин на конвейере и упакуй их!',
+    act2EnterBtn: 'ПЕРЕЙТИ К АКТУ 2: ЗАВОД',
     act2SecretBtn: 'Секрет: Показать вход Акта 2',
+    act2VictoryTitle: 'АКТ 2 ПРОЙДЕН!',
+    act2VictorySub: '20 грибных мивин произведено и упаковано!',
+    act2VictorySaid: 'nikitys6666 запечатал ящик с мивиной:',
+    replayAct2: 'Пройти Акт 2 ещё раз',
     statMushrooms: 'Грибы',
     statTime: 'Время',
     statScared: 'Отпугнул',
     statBest: 'Рекорд',
+    statBoxes: 'Коробки',
+    statPacked: 'Упаковано',
     replayAct1: 'Пройти Акт 1 ещё раз',
     hardcoreEndlessBtn: 'Хардкор 3-е лицо (Бесконечный)',
     fpEndlessBtn: '1-е лицо (Бесконечный)',

@@ -7,6 +7,7 @@ import {
   Factory,
   Flashlight,
   Home,
+  KeyRound,
   Pause,
   Volume2,
   VolumeX,
@@ -25,6 +26,7 @@ interface GameHudProps {
   onVirtualMove: (dx: number, dz: number) => void;
   onVirtualJump: () => void;
   onVirtualSprint: (sprint: boolean) => void;
+  onInteract: () => void;
 }
 
 function formatTime(sec: number): string {
@@ -43,88 +45,157 @@ export const GameHud: React.FC<GameHudProps> = ({
   onVirtualMove,
   onVirtualJump,
   onVirtualSprint,
+  onInteract,
 }) => {
   const [hintsOpen, setHintsOpen] = useState(true);
   const t = getUiText(hud.settings.language);
   const isDanger =
     hud.nearestChaserDist < 11.5 && (hud.ronerSpawned || hud.sashaSpawned);
-  const isFP = hud.mode === 'first_person' || hud.mode === 'story_act1';
+  const isAct2 = hud.mode === 'story_act2';
+  const isFP =
+    hud.mode === 'first_person' ||
+    hud.mode === 'story_act1' ||
+    isAct2;
   const storyGoalMet =
     hud.targetMushrooms !== null && hud.mushrooms >= hud.targetMushrooms;
 
   return (
     <div className="pointer-events-none fixed inset-0 z-30 flex flex-col justify-between p-3 sm:p-5">
-      {/* Subtle First-Person Aim Reticle */}
+      {/* Subtle First-Person Aim Reticle + Act 2 Interact Prompt */}
       {isFP && hud.phase === 'playing' && (
-        <div className="pointer-events-none fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+        <div className="pointer-events-none fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
           <div
-            className={`h-2 w-2 rounded-full border ${
-              hud.flashlightOn
-                ? 'border-amber-200/80 bg-amber-300/60'
-                : 'border-white/40 bg-white/25'
+            className={`h-2.5 w-2.5 rounded-full border ${
+              hud.interactPrompt
+                ? 'border-amber-300 bg-amber-400 scale-125'
+                : hud.flashlightOn
+                  ? 'border-amber-200/80 bg-amber-300/60'
+                  : 'border-white/40 bg-white/25'
             }`}
           />
+          {isAct2 && hud.interactPrompt && (
+            <div className="mt-4 whitespace-nowrap rounded-lg border border-amber-400/70 bg-[#0a1319]/92 px-3.5 py-1.5 text-xs sm:text-sm font-black text-amber-200 shadow-xl">
+              {hud.interactPrompt}
+            </div>
+          )}
         </div>
       )}
 
       {/* Top Perimeter Clusters */}
       <div className="flex items-start justify-between gap-3">
-        {/* Top-Left: Простофиля Mushroom Counter & Story Progress */}
-        <div className="flex items-center gap-3 rounded-xl border border-emerald-500/35 bg-[#0a1319]/92 px-3.5 py-2.5 shadow-lg">
-          <img
-            src="/assets/aistudio/image_690f5407.png"
-            alt={t.mushroomName}
-            className="h-11 w-11 rounded-lg border border-amber-400/50 object-cover shrink-0"
-          />
-          <div>
-            <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider">
-              <span className="text-emerald-300/90">{t.mushroomName}</span>
-              <span
-                className={`rounded px-1.5 py-0.5 text-[10px] font-black ${
-                  hud.mode === 'hardcore_third_person'
-                    ? 'bg-rose-500/25 text-rose-300 border border-rose-400/40'
-                    : hud.mode === 'story_act1'
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-400/35'
-                      : 'bg-sky-500/20 text-sky-300 border border-sky-400/35'
-                }`}
-              >
-                {hud.mode === 'hardcore_third_person'
-                  ? t.badgeHardcore
-                  : hud.mode === 'story_act1'
-                    ? t.badgeStory
-                    : t.badgeFP}
-              </span>
-            </div>
-            <div className="flex items-baseline gap-2.5 mt-0.5">
-              <span className="text-2xl font-black tabular-nums text-white leading-none">
-                {hud.mushrooms}
-                {hud.targetMushrooms !== null && (
-                  <span className="text-sm font-bold text-amber-300">
-                    /{hud.targetMushrooms}
-                  </span>
-                )}
-              </span>
-              {hud.distanceToGate !== null ? (
-                <span
-                  className={`flex items-center gap-1 text-xs font-extrabold tabular-nums ${
-                    storyGoalMet ? 'text-emerald-300' : 'text-sky-300'
-                  }`}
-                >
-                  <Factory className="h-3.5 w-3.5" />
-                  {t.factoryShort} {hud.distanceToGate}
-                  {hud.settings.language === 'en' ? 'm' : 'м'}
-                </span>
-              ) : (
-                <span className="text-xs font-semibold tabular-nums text-amber-300/90">
-                  {t.record}: {hud.bestMushrooms}
-                </span>
-              )}
-              <span className="text-xs font-semibold tabular-nums text-slate-300/85 border-l border-white/15 pl-2">
+        {/* Top-Left: Act 1 / Endless Mushroom Counter OR Act 2 Factory Production Board */}
+        {isAct2 ? (
+          <div className="flex flex-col gap-1.5 rounded-xl border border-sky-400/40 bg-[#0a1319]/92 px-3.5 py-2.5 shadow-lg max-w-md">
+            <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider">
+              <Factory className="h-3.5 w-3.5 text-sky-300" />
+              <span className="text-sky-200">{t.act2Badge}</span>
+              <span className="text-slate-300/80 tabular-nums border-l border-white/15 pl-2">
                 {formatTime(hud.elapsedSeconds)}
               </span>
+              {hud.hasCorridorKey && (
+                <span className="ml-auto inline-flex items-center gap-1 rounded border border-amber-400/60 bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-black text-amber-300">
+                  <KeyRound className="h-3 w-3" />
+                  {t.act2KeyBadge}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-xs font-extrabold tabular-nums">
+              <span className="text-amber-300">
+                {t.act2SeasonedLabel}: {hud.noodlesSeasoned}/{hud.noodlesTarget}
+              </span>
+              <span className="text-emerald-300">
+                {t.act2PackedLabel}: {hud.noodlesPacked}/{hud.noodlesTarget}
+              </span>
+              <span className="text-orange-300">
+                {t.act2PacketsLabel}: {hud.packetsInHand}
+              </span>
+              <span className="text-slate-300">
+                {t.act2MushroomsStock}: {hud.mushroomStock}
+              </span>
+            </div>
+            {hud.act2Stage === 'corridor' && (
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-300 shrink-0">
+                  {t.act2CorridorProgressLabel}
+                </span>
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-black/60">
+                  <div
+                    className="h-full bg-emerald-400 transition-[width] duration-75"
+                    style={{ width: `${hud.corridorProgress}%` }}
+                  />
+                </div>
+                <span className="text-xs font-black tabular-nums text-emerald-200">
+                  {hud.corridorProgress}%
+                </span>
+              </div>
+            )}
+            <div className="text-[11px] font-bold text-emerald-200/90">
+              {hud.act2Stage === 'corridor'
+                ? t.act2StageCorridor
+                : hud.act2Stage === 'corridor_key'
+                  ? t.act2StageCorridorKey
+                  : hud.act2Stage === 'packaging'
+                    ? t.act2StagePackaging
+                    : t.act2StageConveyor}
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex items-center gap-3 rounded-xl border border-emerald-500/35 bg-[#0a1319]/92 px-3.5 py-2.5 shadow-lg">
+            <img
+              src="/assets/aistudio/image_690f5407.png"
+              alt={t.mushroomName}
+              className="h-11 w-11 rounded-lg border border-amber-400/50 object-cover shrink-0"
+            />
+            <div>
+              <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider">
+                <span className="text-emerald-300/90">{t.mushroomName}</span>
+                <span
+                  className={`rounded px-1.5 py-0.5 text-[10px] font-black ${
+                    hud.mode === 'hardcore_third_person'
+                      ? 'bg-rose-500/25 text-rose-300 border border-rose-400/40'
+                      : hud.mode === 'story_act1'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-400/35'
+                        : 'bg-sky-500/20 text-sky-300 border border-sky-400/35'
+                  }`}
+                >
+                  {hud.mode === 'hardcore_third_person'
+                    ? t.badgeHardcore
+                    : hud.mode === 'story_act1'
+                      ? t.badgeStory
+                      : t.badgeFP}
+                </span>
+              </div>
+              <div className="flex items-baseline gap-2.5 mt-0.5">
+                <span className="text-2xl font-black tabular-nums text-white leading-none">
+                  {hud.mushrooms}
+                  {hud.targetMushrooms !== null && (
+                    <span className="text-sm font-bold text-amber-300">
+                      /{hud.targetMushrooms}
+                    </span>
+                  )}
+                </span>
+                {hud.distanceToGate !== null ? (
+                  <span
+                    className={`flex items-center gap-1 text-xs font-extrabold tabular-nums ${
+                      storyGoalMet ? 'text-emerald-300' : 'text-sky-300'
+                    }`}
+                  >
+                    <Factory className="h-3.5 w-3.5" />
+                    {t.factoryShort} {hud.distanceToGate}
+                    {hud.settings.language === 'en' ? 'm' : 'м'}
+                  </span>
+                ) : (
+                  <span className="text-xs font-semibold tabular-nums text-amber-300/90">
+                    {t.record}: {hud.bestMushrooms}
+                  </span>
+                )}
+                <span className="text-xs font-semibold tabular-nums text-slate-300/85 border-l border-white/15 pl-2">
+                  {formatTime(hud.elapsedSeconds)}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Center Event Banner */}
         {hud.eventBanner && (
@@ -234,6 +305,59 @@ export const GameHud: React.FC<GameHudProps> = ({
         </div>
       </div>
 
+      {/* Act 2 Closet Hiding Vignette & Warnings */}
+      {isAct2 && hud.phase === 'playing' && hud.isHidingInLocker && (
+        <div className="pointer-events-none fixed inset-0 z-10 border-x-[28px] sm:border-x-[56px] border-y-[18px] sm:border-y-[32px] border-[#05090e]/85" />
+      )}
+
+      {isAct2 && hud.phase === 'playing' && hud.factoryAlarmActive && (
+        <div className="pointer-events-none fixed inset-0 z-10 border-[8px] border-red-600/65 bg-red-950/15" />
+      )}
+
+      {isAct2 &&
+        hud.phase === 'playing' &&
+        (hud.isHidingInLocker || hud.lightsFlickering || hud.factoryAlarmActive) && (
+          <div className="pointer-events-none fixed top-28 sm:top-24 left-1/2 z-30 -translate-x-1/2 flex w-[92vw] max-w-lg flex-col items-center gap-2">
+            {hud.factoryAlarmActive && (
+              <div className="w-full rounded-xl border-2 border-red-500/85 bg-[#20090d]/94 px-4 py-2.5 shadow-2xl">
+                <div className="flex items-center justify-center gap-2 text-xs sm:text-sm font-black text-red-200 text-center">
+                  <AlertTriangle className="h-4 w-4 text-red-400 shrink-0" />
+                  <span>{t.act2AlarmWarning}</span>
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-red-300 shrink-0">
+                    {t.act2WindowBreachLabel}
+                  </span>
+                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-black/70">
+                    <div
+                      className="h-full bg-red-500 transition-[width] duration-75"
+                      style={{ width: `${hud.windowBreachProgress}%` }}
+                    />
+                  </div>
+                  <span className="text-xs font-black tabular-nums text-red-200">
+                    {hud.windowBreachProgress}%
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {hud.lightsFlickering && (
+              <div className="w-full rounded-xl border-2 border-amber-400/80 bg-[#1e1506]/94 px-4 py-2 text-center shadow-xl">
+                <div className="flex items-center justify-center gap-2 text-xs sm:text-sm font-black text-amber-200">
+                  <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
+                  <span>{t.act2FlickerWarning}</span>
+                </div>
+              </div>
+            )}
+
+            {hud.isHidingInLocker && (
+              <div className="rounded-lg border border-emerald-400/65 bg-[#091c15]/94 px-3.5 py-1.5 text-xs font-black tracking-wide text-emerald-200 shadow-lg">
+                {t.act2HidingBadge}
+              </div>
+            )}
+          </div>
+        )}
+
       {/* Caught Dramatic Screen Vignette */}
       {hud.phase === 'caught' && (
         <div className="pointer-events-none fixed inset-0 border-[10px] border-red-600/80 bg-red-900/20" />
@@ -305,12 +429,21 @@ export const GameHud: React.FC<GameHudProps> = ({
           </button>
           {hintsOpen && (
             <div className="rounded-xl border border-white/15 bg-[#0a1319]/92 px-4 py-1.5 text-xs font-medium text-slate-200 shadow-lg">
-              {t.controlsHud}
+              {isAct2 ? t.controlsHudAct2 : t.controlsHud}
             </div>
           )}
         </div>
 
         <div className="pointer-events-auto flex sm:hidden flex-col gap-2">
+          {isAct2 && (
+            <button
+              type="button"
+              onPointerDown={onInteract}
+              className="rounded-xl border border-orange-300/55 bg-orange-500/35 px-4 py-2.5 text-xs font-black text-orange-100"
+            >
+              {t.act2TouchInteract}
+            </button>
+          )}
           <button
             type="button"
             onPointerDown={onToggleFlashlight}

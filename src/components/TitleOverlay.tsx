@@ -2,8 +2,8 @@ import React from 'react';
 import {
   BookOpen,
   Eye,
+  Factory,
   Flame,
-  Lock,
   Play,
   Settings,
   Sparkles,
@@ -137,16 +137,18 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
 
             <button
               type="button"
-              onClick={onOpenAct2Secret}
-              title={t.modeAct2Tooltip}
-              className="group flex flex-col items-center justify-center rounded-xl border border-amber-400/25 bg-black/40 hover:bg-amber-500/15 hover:border-amber-400/55 px-2.5 py-2 text-[11px] font-bold text-slate-300 transition-all cursor-pointer"
+              onClick={() => onSelectMode('story_act2')}
+              className={`flex flex-col items-center justify-center rounded-xl border px-2.5 py-2 text-xs font-extrabold transition-all cursor-pointer ${
+                mode === 'story_act2'
+                  ? 'border-sky-400 bg-sky-500/20 text-sky-200 shadow-inner'
+                  : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+              }`}
             >
-              <span className="flex items-center gap-1.5 text-amber-200/90">
-                <Lock className="h-3.5 w-3.5 shrink-0 text-amber-400 group-hover:hidden" />
-                <Sparkles className="h-3.5 w-3.5 shrink-0 text-amber-300 hidden group-hover:block" />
-                <span>{t.modeAct2Title}</span>
+              <span className="flex items-center gap-1.5">
+                <Factory className="h-3.5 w-3.5 shrink-0 text-sky-300" />
+                <span>{t.modeStory2}</span>
               </span>
-              <span className="text-[9px] font-extrabold text-amber-300/75">
+              <span className="text-[10px] font-bold text-sky-300/80">
                 {t.modeAct2Sub}
               </span>
             </button>
@@ -203,16 +205,29 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
             </div>
 
             <div className="flex-1 text-center sm:text-left">
-              <div className="text-xs font-bold text-emerald-300">
-                nikitys6666 · {t.record}:{' '}
-                <span className="tabular-nums text-amber-300">{bestMushrooms}</span>
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 text-xs font-bold text-emerald-300">
+                <span>
+                  nikitys6666 · {t.record}:{' '}
+                  <span className="tabular-nums text-amber-300">{bestMushrooms}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={onOpenAct2Secret}
+                  title={t.modeAct2Tooltip}
+                  className="inline-flex items-center gap-1 rounded border border-amber-400/35 bg-amber-500/15 hover:bg-amber-500/25 px-2 py-0.5 text-[10px] font-extrabold text-amber-200 transition-colors cursor-pointer"
+                >
+                  <Sparkles className="h-3 w-3" />
+                  {t.act2SecretLink}
+                </button>
               </div>
-              <div className="text-xs text-slate-300 mt-0.5 leading-snug">
+              <div className="text-xs text-slate-300 mt-1 leading-snug">
                 {mode === 'story_act1'
                   ? t.descStory
-                  : mode === 'first_person'
-                    ? t.descFP
-                    : t.descHardcore}
+                  : mode === 'story_act2'
+                    ? t.descStory2
+                    : mode === 'first_person'
+                      ? t.descFP
+                      : t.descHardcore}
               </div>
             </div>
 
@@ -222,9 +237,11 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
               className={`flex items-center justify-center gap-2 rounded-xl px-6 py-3.5 text-base font-black text-slate-950 shadow-lg transition-all cursor-pointer shrink-0 w-full sm:w-auto active:scale-95 ${
                 mode === 'hardcore_third_person'
                   ? 'bg-rose-400 hover:bg-rose-300'
-                  : mode === 'story_act1'
-                    ? 'bg-amber-400 hover:bg-amber-300'
-                    : 'bg-emerald-500 hover:bg-emerald-400'
+                  : mode === 'story_act2'
+                    ? 'bg-sky-400 hover:bg-sky-300'
+                    : mode === 'story_act1'
+                      ? 'bg-amber-400 hover:bg-amber-300'
+                      : 'bg-emerald-500 hover:bg-emerald-400'
               }`}
             >
               <Play className="h-5 w-5 fill-current" />
