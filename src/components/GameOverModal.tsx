@@ -5,12 +5,14 @@ import {
   Eye,
   Factory,
   Flame,
+  Footprints,
   Home,
   Play,
   RotateCcw,
   Settings,
   Skull,
   Sparkles,
+  Sprout,
   Trees,
   Trophy,
 } from 'lucide-react';
@@ -39,11 +41,12 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   const t = getUiText(hud.settings.language);
   const outroQuote = getCutsceneLine('outro_0', hud.settings).display;
   const screamQuote = getCaughtScreamLine(hud.settings).display;
+  const secUnit = hud.settings.language === 'en' ? 's' : 'с';
 
   if (hud.phase === 'paused') {
     return (
       <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/68 p-4">
-        <div className="w-full max-w-sm rounded-2xl border border-emerald-400/35 bg-[#0a1319] p-6 text-center shadow-2xl">
+        <div className="w-full max-w-sm rounded-2xl border border-emerald-400/35 bg-[#0a1319] p-5 sm:p-6 text-center shadow-2xl">
           <h2 className="text-2xl font-black tracking-wide text-white">
             {t.pauseTitle}
           </h2>
@@ -55,11 +58,13 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
                   {hud.fnafMivinasTotal}
                 </span>
               </>
-            ) : hud.mode === 'story_act3' ? (
+            ) : hud.mode === 'story_act3' || hud.mode === 'act3_survival' ? (
               <>
-                {t.act3NightLabel}:{' '}
+                {hud.mode === 'act3_survival' ? t.statDays : t.act3NightLabel}:{' '}
                 <span className="font-bold text-pink-300 tabular-nums">
-                  {hud.act3Night}/{hud.act3MaxNights}
+                  {hud.act3MaxNights !== null
+                    ? `${hud.act3Night}/${hud.act3MaxNights}`
+                    : hud.act3Night}
                 </span>
               </>
             ) : hud.mode === 'story_act4' ? (
@@ -67,6 +72,21 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
                 {t.act4WaveLabel}:{' '}
                 <span className="font-bold text-purple-300 tabular-nums">
                   {hud.act4Wave}/{hud.act4MaxWaves} · {hud.act4Kills} {t.statKills}
+                </span>
+              </>
+            ) : hud.mode === 'parkour_minigame' ? (
+              <>
+                {t.parkourProgressLabel}:{' '}
+                <span className="font-bold text-cyan-300 tabular-nums">
+                  {hud.parkourProgress}% · {t.parkourCheckpointLabel}{' '}
+                  {hud.parkourCheckpoint}/{hud.parkourTotalCheckpoints}
+                </span>
+              </>
+            ) : hud.mode === 'plants_vs_roners' ? (
+              <>
+                {t.pvzWaveLabel}:{' '}
+                <span className="font-bold text-green-300 tabular-nums">
+                  {hud.pvzWave}/{hud.pvzMaxWaves} · {t.pvzEnergyLabel}: {hud.pvzEnergy}
                 </span>
               </>
             ) : hud.mode === 'sniper_minigame' ? (
@@ -129,68 +149,86 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
     const isAct2Victory = hud.mode === 'story_act2';
     const isAct3Victory = hud.mode === 'story_act3';
     const isAct4Victory = hud.mode === 'story_act4';
+    const isParkourVictory = hud.mode === 'parkour_minigame';
+    const isPvzVictory = hud.mode === 'plants_vs_roners';
+    const isMinigameVictory = isParkourVictory || isPvzVictory;
+
     const act2Quote = getCutsceneLine('act2_outro_0', hud.settings).display;
     const act3Quote = getCutsceneLine('act3_outro_2', hud.settings).display;
     const act4Quote = getCutsceneLine('act4_outro_0', hud.settings).display;
 
     return (
       <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/78 p-4">
-        <div className="w-full max-w-md rounded-2xl border-2 border-emerald-400 bg-[#0b1812] p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.85)]">
+        <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-2xl border-2 border-emerald-400 bg-[#0b1812] p-5 sm:p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.85)]">
           <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/20 border border-emerald-400/50 text-emerald-300">
             <CheckCircle2 className="h-8 w-8" />
           </div>
 
-          <h2 className="text-3xl font-black tracking-wider text-emerald-300">
-            {isAct4Victory
-              ? t.act4VictoryTitle
-              : isAct3Victory
-                ? t.act3VictoryTitle
-                : isAct2Victory
-                  ? t.act2VictoryTitle
-                  : t.victoryTitle}
+          <h2 className="text-2xl sm:text-3xl font-black tracking-wider text-emerald-300">
+            {isParkourVictory
+              ? t.parkourVictoryTitle
+              : isPvzVictory
+                ? t.pvzVictoryTitle
+                : isAct4Victory
+                  ? t.act4VictoryTitle
+                  : isAct3Victory
+                    ? t.act3VictoryTitle
+                    : isAct2Victory
+                      ? t.act2VictoryTitle
+                      : t.victoryTitle}
           </h2>
           <p className="mt-1 text-sm font-bold text-amber-200">
-            {isAct4Victory
-              ? t.act4VictorySub
-              : isAct3Victory
-                ? t.act3VictorySub
-                : isAct2Victory
-                  ? t.act2VictorySub
-                  : t.victorySub}
+            {isParkourVictory
+              ? t.parkourVictorySub
+              : isPvzVictory
+                ? t.pvzVictorySub
+                : isAct4Victory
+                  ? t.act4VictorySub
+                  : isAct3Victory
+                    ? t.act3VictorySub
+                    : isAct2Victory
+                      ? t.act2VictorySub
+                      : t.victorySub}
           </p>
 
           <div className="mt-3 rounded-xl border border-emerald-400/35 bg-[#12261b] px-4 py-3">
             <div className="text-xs font-bold uppercase tracking-wider text-emerald-300">
-              {isAct4Victory
-                ? t.act4VictorySaid
-                : isAct3Victory
-                  ? t.act3VictorySaid
-                  : isAct2Victory
-                    ? t.act2VictorySaid
-                    : t.victorySaidPrefix}
+              {isParkourVictory
+                ? t.parkourVictorySaid
+                : isPvzVictory
+                  ? t.pvzVictorySaid
+                  : isAct4Victory
+                    ? t.act4VictorySaid
+                    : isAct3Victory
+                      ? t.act3VictorySaid
+                      : isAct2Victory
+                        ? t.act2VictorySaid
+                        : t.victorySaidPrefix}
             </div>
             <div className="mt-1 text-base font-black text-white">
               «
-              {isAct4Victory
-                ? act4Quote
-                : isAct3Victory
-                  ? act3Quote
-                  : isAct2Victory
-                    ? act2Quote
-                    : outroQuote}
+              {isParkourVictory
+                ? 'EZ!'
+                : isPvzVictory
+                  ? 'RONER STOP!'
+                  : isAct4Victory
+                    ? act4Quote
+                    : isAct3Victory
+                      ? act3Quote
+                      : isAct2Victory
+                        ? act2Quote
+                        : outroQuote}
               »
             </div>
           </div>
 
-          {!isAct2Victory && !isAct3Victory && !isAct4Victory && (
+          {!isMinigameVictory && !isAct2Victory && !isAct3Victory && !isAct4Victory && (
             <div className="mt-4 rounded-xl border border-sky-400/45 bg-[#101924] p-4">
               <div className="flex items-center justify-center gap-2 text-sky-300 font-black text-lg">
                 <Factory className="h-5 w-5" />
                 {t.act2CardTitle}
               </div>
-              <div className="mt-1 text-xs text-slate-300">
-                {t.act2CardSub}
-              </div>
+              <div className="mt-1 text-xs text-slate-300">{t.act2CardSub}</div>
               <button
                 type="button"
                 onClick={() => onRestart('story_act2')}
@@ -208,9 +246,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
                 <Trees className="h-5 w-5" />
                 {t.act3CardTitle}
               </div>
-              <div className="mt-1 text-xs text-slate-300">
-                {t.act3CardSub}
-              </div>
+              <div className="mt-1 text-xs text-slate-300">{t.act3CardSub}</div>
               <button
                 type="button"
                 onClick={() => onRestart('story_act3')}
@@ -228,9 +264,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
                 <Sparkles className="h-5 w-5" />
                 {t.act4CardTitle}
               </div>
-              <div className="mt-1 text-xs text-slate-300">
-                {t.act4CardSub}
-              </div>
+              <div className="mt-1 text-xs text-slate-300">{t.act4CardSub}</div>
               <button
                 type="button"
                 onClick={() => onRestart('story_act4')}
@@ -245,51 +279,67 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
           <div className="mt-4 grid grid-cols-3 gap-2 rounded-xl border border-white/10 bg-[#0f1f17] p-3 text-center">
             <div>
               <div className="text-[10px] font-bold uppercase text-slate-400">
-                {isAct4Victory
-                  ? t.statWave
-                  : isAct3Victory
-                    ? t.statNights
-                    : isAct2Victory
-                      ? t.statPacked
-                      : t.statMushrooms}
+                {isParkourVictory
+                  ? t.statCheckpoint
+                  : isPvzVictory || isAct4Victory
+                    ? t.statWave
+                    : isAct3Victory
+                      ? t.statNights
+                      : isAct2Victory
+                        ? t.statPacked
+                        : t.statMushrooms}
               </div>
               <div className="text-lg font-black tabular-nums text-emerald-300">
-                {isAct4Victory
-                  ? `${hud.act4Wave}/${hud.act4MaxWaves}`
-                  : isAct3Victory
-                    ? `${hud.act3Night}/${hud.act3MaxNights}`
-                    : isAct2Victory
-                      ? `${hud.noodlesPacked}/20`
-                      : hud.mushrooms}
+                {isParkourVictory
+                  ? `${hud.parkourCheckpoint}/${hud.parkourTotalCheckpoints}`
+                  : isPvzVictory
+                    ? `${hud.pvzWave}/${hud.pvzMaxWaves}`
+                    : isAct4Victory
+                      ? `${hud.act4Wave}/${hud.act4MaxWaves}`
+                      : isAct3Victory
+                        ? `${hud.act3Night}/${hud.act3MaxNights}`
+                        : isAct2Victory
+                          ? `${hud.noodlesPacked}/20`
+                          : hud.mushrooms}
               </div>
             </div>
             <div>
               <div className="text-[10px] font-bold uppercase text-slate-400">
-                {isAct4Victory
-                  ? t.statKills
-                  : isAct3Victory
-                    ? t.statBaseLv
-                    : isAct2Victory
-                      ? t.statBoxes
-                      : t.statTime}
+                {isParkourVictory
+                  ? t.parkourProgressLabel
+                  : isPvzVictory
+                    ? t.pvzEnergyLabel
+                    : isAct4Victory
+                      ? t.statKills
+                      : isAct3Victory
+                        ? t.statBaseLv
+                        : isAct2Victory
+                          ? t.statBoxes
+                          : t.statTime}
               </div>
               <div className="text-lg font-black tabular-nums text-white">
-                {isAct4Victory
-                  ? hud.act4Kills
-                  : isAct3Victory
-                    ? `Lv.${hud.act3BaseLevel}`
-                    : isAct2Victory
-                      ? hud.boxesFound
-                      : `${hud.elapsedSeconds}${hud.settings.language === 'en' ? 's' : 'с'}`}
+                {isParkourVictory
+                  ? '100%'
+                  : isPvzVictory
+                    ? hud.pvzEnergy
+                    : isAct4Victory
+                      ? hud.act4Kills
+                      : isAct3Victory
+                        ? `Lv.${hud.act3BaseLevel}`
+                        : isAct2Victory
+                          ? hud.boxesFound
+                          : `${hud.elapsedSeconds}${secUnit}`}
               </div>
             </div>
             <div>
               <div className="text-[10px] font-bold uppercase text-slate-400">
-                {isAct2Victory || isAct3Victory || isAct4Victory ? t.statTime : t.statScared}
+                {isMinigameVictory || isAct2Victory || isAct3Victory || isAct4Victory
+                  ? t.statTime
+                  : t.statScared}
               </div>
               <div className="text-lg font-black tabular-nums text-sky-300">
-                {isAct2Victory || isAct3Victory || isAct4Victory
-                  ? `${hud.elapsedSeconds}${hud.settings.language === 'en' ? 's' : 'с'}`
+                {isMinigameVictory || isAct2Victory || isAct3Victory || isAct4Victory
+                  ? `${hud.elapsedSeconds}${secUnit}`
                   : hud.flashlightStuns}
               </div>
             </div>
@@ -298,27 +348,21 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
           <div className="mt-5 flex flex-col gap-2.5">
             <button
               type="button"
-              onClick={() =>
-                onRestart(
-                  isAct4Victory
-                    ? 'story_act4'
-                    : isAct3Victory
-                      ? 'story_act3'
-                      : isAct2Victory
-                        ? 'story_act2'
-                        : 'story_act1'
-                )
-              }
+              onClick={() => onRestart(hud.mode)}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-95 px-6 py-3.5 text-base font-black text-slate-950 shadow-lg transition-all cursor-pointer"
             >
               <RotateCcw className="h-5 w-5" />
-              {isAct4Victory
-                ? t.replayAct4
-                : isAct3Victory
-                  ? t.replayAct3
-                  : isAct2Victory
-                    ? t.replayAct2
-                    : t.replayAct1}
+              {isParkourVictory
+                ? t.replayParkour
+                : isPvzVictory
+                  ? t.replayPvz
+                  : isAct4Victory
+                    ? t.replayAct4
+                    : isAct3Victory
+                      ? t.replayAct3
+                      : isAct2Victory
+                        ? t.replayAct2
+                        : t.replayAct1}
             </button>
             <button
               type="button"
@@ -346,39 +390,57 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
 
   const isFnaf = hud.mode === 'fnaf_epta';
   const isSniper = hud.mode === 'sniper_minigame';
-  const isAct3 = hud.mode === 'story_act3';
+  const isAct3Survival = hud.mode === 'act3_survival';
+  const isAct3 = hud.mode === 'story_act3' || isAct3Survival;
   const isAct4 = hud.mode === 'story_act4';
+  const isParkour = hud.mode === 'parkour_minigame';
+  const isPvz = hud.mode === 'plants_vs_roners';
+  const isHardcoreBurnout = hud.killerName === 'HARDCORE FIRE';
 
   const altMode: GameMode = isFnaf
     ? 'sniper_minigame'
     : isSniper
       ? 'fnaf_epta'
-      : hud.mode === 'first_person'
-        ? 'hardcore_third_person'
-        : 'first_person';
+      : isPvz
+        ? 'parkour_minigame'
+        : isParkour
+          ? 'plants_vs_roners'
+          : hud.mode === 'first_person'
+            ? 'hardcore_third_person'
+            : 'first_person';
 
   const modeLabelText =
     hud.mode === 'story_act1'
       ? t.modeStory
       : hud.mode === 'story_act2'
         ? t.modeStory2
-        : isAct3
-          ? t.modeStory3
-          : isAct4
-            ? t.modeStory4
-            : isFnaf
-              ? t.modeFnafTitle
-              : isSniper
-                ? t.modeSniperTitle
-                : hud.mode === 'hardcore_third_person'
-                  ? t.hardcoreEndlessBtn
-                  : t.fpEndlessBtn;
+        : isAct3Survival
+          ? t.modeAct3SurvivalTitle
+          : isAct3
+            ? t.modeStory3
+            : isAct4
+              ? t.modeStory4
+              : isParkour
+                ? t.modeParkourTitle
+                : isPvz
+                  ? t.modePvzTitle
+                  : isFnaf
+                    ? t.modeFnafTitle
+                    : isSniper
+                      ? t.modeSniperTitle
+                      : hud.mode === 'hardcore_third_person'
+                        ? t.hardcoreEndlessBtn
+                        : t.fpEndlessBtn;
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/78 p-4">
-      <div className="w-full max-w-md rounded-2xl border-2 border-red-500/75 bg-[#120d12] p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.85)]">
+      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-2xl border-2 border-red-500/75 bg-[#120d12] p-5 sm:p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.85)]">
         <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-red-600/25 border border-red-500/50 text-red-400">
-          <Skull className="h-8 w-8" />
+          {isHardcoreBurnout ? (
+            <Flame className="h-8 w-8 text-orange-400" />
+          ) : (
+            <Skull className="h-8 w-8" />
+          )}
         </div>
 
         <h2 className="text-3xl font-black tracking-wider text-red-500">
@@ -388,17 +450,25 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
           {t.modeLabel} {modeLabelText}
         </div>
 
-        <div className="mt-3 rounded-xl border border-yellow-400/45 bg-red-950/60 px-4 py-3">
-          <div className="text-xs font-bold uppercase tracking-wider text-yellow-300">
-            {hud.killerName ?? 'RONER_552'}{' '}
-            {hud.settings.familyMode
-              ? t.caughtFamilySuffix
-              : t.caughtNormalSuffix}
+        {isHardcoreBurnout ? (
+          <div className="mt-3 rounded-xl border border-orange-400/60 bg-orange-950/70 px-4 py-3">
+            <div className="text-sm sm:text-base font-black text-orange-200">
+              {t.hardcoreBurnoutMsg}
+            </div>
           </div>
-          <div className="mt-1 text-lg sm:text-xl font-black text-white">
-            «{screamQuote}»
+        ) : (
+          <div className="mt-3 rounded-xl border border-yellow-400/45 bg-red-950/60 px-4 py-3">
+            <div className="text-xs font-bold uppercase tracking-wider text-yellow-300">
+              {hud.killerName ?? 'RONER_552'}{' '}
+              {hud.settings.familyMode
+                ? t.caughtFamilySuffix
+                : t.caughtNormalSuffix}
+            </div>
+            <div className="mt-1 text-lg sm:text-xl font-black text-white">
+              «{screamQuote}»
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="mt-4 flex items-center gap-3 rounded-xl border border-white/10 bg-[#1a1520] p-3 text-left">
           <img
@@ -409,26 +479,38 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
           <div className="grid grid-cols-4 gap-1.5 flex-1 text-center">
             <div>
               <div className="text-[10px] font-bold uppercase text-slate-400">
-                {isAct4
-                  ? t.statKills
-                  : isAct3
-                    ? t.statNights
-                    : isFnaf
-                      ? t.statMivinas
-                      : isSniper
-                        ? t.statClones
-                        : t.statMushrooms}
+                {isPvz
+                  ? t.statWave
+                  : isParkour
+                    ? t.statCheckpoint
+                    : isAct4
+                      ? t.statKills
+                      : isAct3Survival
+                        ? t.statDays
+                        : isAct3
+                          ? t.statNights
+                          : isFnaf
+                            ? t.statMivinas
+                            : isSniper
+                              ? t.statClones
+                              : t.statMushrooms}
               </div>
               <div className="text-lg font-black tabular-nums text-emerald-300">
-                {isAct4
-                  ? hud.act4Kills
-                  : isAct3
-                    ? `${hud.act3Night}/${hud.act3MaxNights}`
-                    : isFnaf
-                      ? hud.fnafMivinasTotal
-                      : isSniper
-                        ? hud.clonesKilled
-                        : hud.mushrooms}
+                {isPvz
+                  ? `${hud.pvzWave}/${hud.pvzMaxWaves}`
+                  : isParkour
+                    ? `${hud.parkourCheckpoint}/${hud.parkourTotalCheckpoints}`
+                    : isAct4
+                      ? hud.act4Kills
+                      : isAct3Survival
+                        ? hud.act3Night
+                        : isAct3
+                          ? `${hud.act3Night}/${hud.act3MaxNights}`
+                          : isFnaf
+                            ? hud.fnafMivinasTotal
+                            : isSniper
+                              ? hud.clonesKilled
+                              : hud.mushrooms}
               </div>
             </div>
             <div>
@@ -449,27 +531,35 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
               </div>
               <div className="text-lg font-black tabular-nums text-white">
                 {hud.elapsedSeconds}
-                {hud.settings.language === 'en' ? 's' : 'с'}
+                {secUnit}
               </div>
             </div>
             <div>
               <div className="text-[10px] font-bold uppercase text-slate-400">
-                {isAct4
-                  ? t.statWave
-                  : isAct3
-                    ? t.statBaseLv
-                    : isSniper
-                      ? t.sniperWaveLabel
-                      : t.statScared}
+                {isPvz
+                  ? t.pvzEnemiesLabel
+                  : isParkour
+                    ? t.parkourProgressLabel
+                    : isAct4
+                      ? t.statWave
+                      : isAct3
+                        ? t.statBaseLv
+                        : isSniper
+                          ? t.sniperWaveLabel
+                          : t.statScared}
               </div>
               <div className="text-lg font-black tabular-nums text-sky-300">
-                {isAct4
-                  ? `${hud.act4Wave}/${hud.act4MaxWaves}`
-                  : isAct3
-                    ? `Lv.${hud.act3BaseLevel}`
-                    : isSniper
-                      ? `#${hud.sniperWave}`
-                      : hud.flashlightStuns}
+                {isPvz
+                  ? hud.pvzEnemiesRemaining
+                  : isParkour
+                    ? `${hud.parkourProgress}%`
+                    : isAct4
+                      ? `${hud.act4Wave}/${hud.act4MaxWaves}`
+                      : isAct3
+                        ? `Lv.${hud.act3BaseLevel}`
+                        : isSniper
+                          ? `#${hud.sniperWave}`
+                          : hud.flashlightStuns}
               </div>
             </div>
           </div>
@@ -504,6 +594,16 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
                 <Factory className="h-4 w-4 text-orange-300" />
                 {t.modeFnafTitle}
               </>
+            ) : altMode === 'parkour_minigame' ? (
+              <>
+                <Footprints className="h-4 w-4 text-cyan-300" />
+                {t.modeParkourTitle}
+              </>
+            ) : altMode === 'plants_vs_roners' ? (
+              <>
+                <Sprout className="h-4 w-4 text-green-300" />
+                {t.modePvzTitle}
+              </>
             ) : (
               <>
                 <Eye className="h-4 w-4 text-emerald-300" />
@@ -520,10 +620,9 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
             {t.menuBtn}
           </button>
         </div>
-        <div className="mt-2 text-xs text-slate-400">
-          {t.restartHint}
-        </div>
+        <div className="mt-2 text-xs text-slate-400">{t.restartHint}</div>
       </div>
     </div>
   );
 };
+

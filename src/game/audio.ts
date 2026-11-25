@@ -841,10 +841,23 @@ export class GameAudio {
     }
   }
 
-  private getRussianVoice(): SpeechSynthesisVoice | null {
+  private speechLang: 'ru' | 'en' | 'pl' = 'ru';
+
+  public setLanguage(lang: 'ru' | 'en' | 'pl'): void {
+    this.speechLang = lang;
+  }
+
+  private getPreferredVoice(): SpeechSynthesisVoice | null {
     try {
       const voices = window.speechSynthesis.getVoices();
       if (!voices || voices.length === 0) return null;
+      if (this.speechLang === 'pl') {
+        return (
+          voices.find((v) => v.lang.toLowerCase() === 'pl-pl') ??
+          voices.find((v) => v.lang.toLowerCase().startsWith('pl')) ??
+          null
+        );
+      }
       return (
         voices.find((v) => v.lang.toLowerCase() === 'ru-ru') ??
         voices.find((v) => v.lang.toLowerCase().startsWith('ru')) ??
@@ -880,13 +893,16 @@ export class GameAudio {
       }
       this.lastSpeechAt = now;
 
-      const phoneticText = transliterateEnglishToRussianPhonetics(text);
-      const utter = new SpeechSynthesisUtterance(phoneticText);
-      const ruVoice = this.getRussianVoice();
-      if (ruVoice) {
-        utter.voice = ruVoice;
+      const spokenText =
+        this.speechLang === 'pl'
+          ? text
+          : transliterateEnglishToRussianPhonetics(text);
+      const utter = new SpeechSynthesisUtterance(spokenText);
+      const preferredVoice = this.getPreferredVoice();
+      if (preferredVoice) {
+        utter.voice = preferredVoice;
       }
-      utter.lang = 'ru-RU';
+      utter.lang = this.speechLang === 'pl' ? 'pl-PL' : 'ru-RU';
       utter.pitch = pitch;
       utter.rate = rate;
       utter.volume = 0.9;

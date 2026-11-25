@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Trophy } from 'lucide-react';
+import { HelpCircle, RotateCw, Trophy } from 'lucide-react';
 import { AchievementsModal } from './components/AchievementsModal';
 import { CutsceneOverlay } from './components/CutsceneOverlay';
 import { GameHud } from './components/GameHud';
@@ -17,6 +17,7 @@ import {
   GameMode,
   GameSettings,
   HudSnapshot,
+  PvzPlantType,
   SpeechBubbleState,
 } from './types/game';
 
@@ -28,6 +29,7 @@ const INITIAL_HUD: HudSnapshot = {
   targetMushrooms: 40,
   bestMushrooms: 0,
   elapsedSeconds: 0,
+  hardcoreTimeLeft: null,
   stamina: 100,
   battery: 100,
   hasBatteryLimit: true,
@@ -84,6 +86,7 @@ const INITIAL_HUD: HudSnapshot = {
   act3HasSniper: false,
   act3Hp: 3,
   act3MaxHp: 3,
+  act3RiddleModalOpen: false,
   act4Stage: 'walk_to_house',
   act4Kills: 0,
   act4Wave: 1,
@@ -96,6 +99,16 @@ const INITIAL_HUD: HudSnapshot = {
   act4BossMaxHp: 11488,
   act4Hp: 5,
   act4MaxHp: 5,
+  parkourCheckpoint: 0,
+  parkourTotalCheckpoints: 4,
+  parkourProgress: 0,
+  pvzEnergy: 150,
+  pvzWave: 1,
+  pvzMaxWaves: 4,
+  pvzSelectedPlant: 'peashooter',
+  pvzHoveredRow: null,
+  pvzHoveredCol: null,
+  pvzEnemiesRemaining: 0,
 };
 
 export default function App() {
@@ -112,6 +125,11 @@ export default function App() {
     () => loadAchievements()
   );
   const [toastQueue, setToastQueue] = useState<AchievementId[]>([]);
+  const [riddleInput, setRiddleInput] = useState('');
+  const [riddleError, setRiddleError] = useState(false);
+  const [isPortrait, setIsPortrait] = useState(
+    () => typeof window !== 'undefined' && window.innerHeight > window.innerWidth
+  );
 
   useEffect(() => {
     const container = mountRef.current;
@@ -135,6 +153,39 @@ export default function App() {
       engineRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const checkOrientation = () => {
+      setIsPortrait(window.innerHeight > window.innerWidth);
+    };
+    checkOrientation();
+    window.addEventListener('resize', checkOrientation);
+    window.addEventListener('orientationchange', checkOrientation);
+    return () => {
+      window.removeEventListener('resize', checkOrientation);
+      window.removeEventListener('orientationchange', checkOrientation);
+    };
+  }, []);
+
+  const orientationBlocked = hud.settings.mobileMode && isPortrait;
+
+  useEffect(() => {
+    engineRef.current?.setOrientationBlocked(orientationBlocked);
+  }, [orientationBlocked]);
+
+  useEffect(() => {
+    const raf = window.requestAnimationFrame(() => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [hud.settings.mobileMode, hud.phase]);
+
+  useEffect(() => {
+    if (hud.act3RiddleModalOpen) {
+      setRiddleInput('');
+      setRiddleError(false);
+    }
+  }, [hud.act3RiddleModalOpen]);
 
   useEffect(() => {
     if (toastQueue.length === 0) return;
@@ -195,10 +246,12 @@ export default function App() {
   const handleInteract = useCallback(() => {
     if (hud.mode === 'sniper_minigame') {
       engineRef.current?.fireSniperShot();
-    } else if (hud.mode === 'story_act3') {
+    } else if (hud.mode === 'story_act3' || hud.mode === 'act3_survival') {
       engineRef.current?.interactAct3Park();
     } else if (hud.mode === 'story_act4') {
       engineRef.current?.interactAct4Village();
+    } else if (hud.mode === 'plants_vs_roners') {
+      engineRef.current?.interactPvz();
     } else {
       engineRef.current?.interactFactory();
     }
@@ -215,6 +268,23 @@ export default function App() {
     engineRef.current?.unlockAct4Turrets();
   }, []);
 
+  const handleSelectPvzPlant = useCallback((kind: PvzPlantType) => {
+    engineRef.current?.selectPvzPlant(kind);
+  }, []);
+
+  const handleSubmitRiddle = useCallback(() => {
+    const ok = engineRef.current?.submitAct3Riddle(riddleInput);
+    if (ok) {
+      setRiddleError(false);
+    } else {
+      setRiddleError(true);
+    }
+  }, [riddleInput]);
+
+  const handleCloseRiddle = useCallback(() => {
+    engineRef.current?.closeAct3Riddle();
+  }, []);
+
   const isCutscene =
     hud.phase === 'intro_cutscene' ||
     hud.phase === 'outro_cutscene' ||
@@ -228,16 +298,26 @@ export default function App() {
     hud.phase === 'act4_intro_cutscene' ||
     hud.phase === 'act4_outro_cutscene';
 
+  const isGameplayView =
+    hud.phase === 'playing' || hud.phase === 'caught' || hud.phase === 'paused';
+
   const activeToastId = toastQueue[0] ?? null;
   const activeToastInfo = activeToastId
     ? getAchievementText(activeToastId, hud.settings.language)
     : null;
   const uiText = getUiText(hud.settings.language);
 
+  const mountClass =
+    hud.settings.mobileMode && isGameplayView
+      ? 'fixed inset-x-2 sm:inset-x-10 top-1.5 bottom-28 z-0 rounded-xl overflow-hidden border border-emerald-400/25 shadow-inner'
+      : hud.settings.mobileMode
+        ? 'fixed inset-2 z-0 rounded-xl overflow-hidden border border-white/10'
+        : 'fixed inset-0 z-0';
+
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-[#071018]">
-      {/* Isolated WebGL canvas mount — never re-rendered by HUD state */}
-      <div ref={mountRef} className="fixed inset-0 z-0" />
+      {/* Isolated WebGL canvas mount — shrinks cleanly in Mobile Device Mode so buttons fit */}
+      <div ref={mountRef} className={mountClass} />
 
       {/* Achievement Unlock Notification Banner */}
       {activeToastInfo && (
@@ -275,7 +355,11 @@ export default function App() {
 
       {isCutscene && (
         <>
-          <SpeechBubblesOverlay bubbles={bubbles} floatingTexts={floatingTexts} />
+          <SpeechBubblesOverlay
+            bubbles={bubbles}
+            floatingTexts={floatingTexts}
+            frameClassName={mountClass}
+          />
           <CutsceneOverlay
             subtitle={hud.cutsceneSubtitle}
             language={hud.settings.language}
@@ -288,9 +372,13 @@ export default function App() {
         </>
       )}
 
-      {(hud.phase === 'playing' || hud.phase === 'caught' || hud.phase === 'paused') && (
+      {isGameplayView && (
         <>
-          <SpeechBubblesOverlay bubbles={bubbles} floatingTexts={floatingTexts} />
+          <SpeechBubblesOverlay
+            bubbles={bubbles}
+            floatingTexts={floatingTexts}
+            frameClassName={mountClass}
+          />
           <GameHud
             hud={hud}
             muted={muted}
@@ -304,6 +392,7 @@ export default function App() {
             onInteract={handleInteract}
             onSelectAct4Weapon={handleSelectAct4Weapon}
             onUnlockAct4Turrets={handleUnlockAct4Turrets}
+            onSelectPvzPlant={handleSelectPvzPlant}
           />
         </>
       )}
@@ -329,6 +418,84 @@ export default function App() {
         state={achievements}
         onClose={() => setAchievementsOpen(false)}
       />
+
+      {/* Act 3 Corner Riddle Modal (P + P = 28) */}
+      {hud.act3RiddleModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.stopPropagation();
+              handleCloseRiddle();
+            } else if (e.key === 'Enter') {
+              e.stopPropagation();
+              handleSubmitRiddle();
+            } else {
+              e.stopPropagation();
+            }
+          }}
+        >
+          <div className="w-full max-w-sm rounded-2xl border-2 border-amber-400/75 bg-[#0a1319] p-5 text-center shadow-2xl">
+            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-xl border border-amber-400/50 bg-amber-500/20 text-amber-300">
+              <HelpCircle className="h-6 w-6" />
+            </div>
+            <h3 className="text-lg font-black text-amber-300">
+              {uiText.act3RiddleTitle}
+            </h3>
+            <p className="mt-1.5 text-xs sm:text-sm font-medium text-slate-200">
+              {uiText.act3RiddlePrompt}
+            </p>
+            <input
+              type="text"
+              autoFocus
+              value={riddleInput}
+              onChange={(e) => {
+                setRiddleInput(e.target.value);
+                setRiddleError(false);
+              }}
+              placeholder={uiText.act3RiddlePlaceholder}
+              className="mt-3 w-full rounded-xl border border-white/20 bg-black/50 px-3.5 py-2.5 text-center text-base font-black text-white focus:border-amber-400 focus:outline-none"
+            />
+            {riddleError && (
+              <div className="mt-2 text-xs font-bold text-rose-400">
+                {uiText.act3RiddleWrong}
+              </div>
+            )}
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={handleCloseRiddle}
+                className="rounded-xl border border-white/15 bg-white/10 hover:bg-white/15 py-2.5 text-xs font-extrabold text-slate-200 cursor-pointer"
+              >
+                {uiText.act3RiddleCancel}
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitRiddle}
+                className="rounded-xl bg-amber-400 hover:bg-amber-300 py-2.5 text-xs font-black text-slate-950 cursor-pointer"
+              >
+                {uiText.act3RiddleSubmit}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Device Mode Portrait Orientation Lock */}
+      {orientationBlocked && (
+        <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-[#060c11]/98 p-6 text-center">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-cyan-400/60 bg-cyan-500/20 text-cyan-300 animate-pulse">
+            <RotateCw className="h-8 w-8" />
+          </div>
+          <h2 className="text-xl font-black tracking-wide text-cyan-300">
+            {uiText.portraitBlockTitle}
+          </h2>
+          <p className="mt-2 max-w-xs text-sm font-medium text-slate-300">
+            {uiText.portraitBlockDesc}
+          </p>
+        </div>
+      )}
     </main>
   );
 }
+

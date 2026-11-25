@@ -25,7 +25,10 @@ export type GameMode =
   | 'first_person'
   | 'hardcore_third_person'
   | 'fnaf_epta'
-  | 'sniper_minigame';
+  | 'sniper_minigame'
+  | 'act3_survival'
+  | 'parkour_minigame'
+  | 'plants_vs_roners';
 
 export type Act4WeaponId =
   | 'pistol'
@@ -35,9 +38,20 @@ export type Act4WeaponId =
   | 'rpg'
   | 'flamethrower';
 
+export type PvzPlantType =
+  | 'sun'
+  | 'peashooter'
+  | 'repeater'
+  | 'wallnut'
+  | 'shovel';
+
 export type ChaserId = 'roner' | 'sasha';
 
-export type GameLanguage = 'ru' | 'en';
+export type GameLanguage = 'ru' | 'en' | 'pl';
+
+export type GraphicsQuality = 'low' | 'medium' | 'high';
+
+export type StoryActMode = 'story_act1' | 'story_act2' | 'story_act3' | 'story_act4';
 
 export type AchievementId =
   | 'act1_clear'
@@ -51,7 +65,12 @@ export type AchievementId =
   | 'sniper_100'
   | 'secret_malinka'
   | 'act4_shahediki'
-  | 'act4_jojo';
+  | 'act4_jojo'
+  | 'act3_40_days'
+  | 'act3_99_days'
+  | 'parkour_clear'
+  | 'pvz_gardener'
+  | 'hardcore_all_acts';
 
 export interface AchievementDef {
   id: AchievementId;
@@ -65,12 +84,18 @@ export interface AchievementProgressState {
   totalMushrooms: number;
   totalFnafMivinas: number;
   totalClonesKilled: number;
+  hardcoreActsCleared: StoryActMode[];
 }
 
 export interface GameSettings {
   language: GameLanguage;
   censorship: boolean;
   familyMode: boolean;
+  hardcoreMode: boolean;
+  voidMode: boolean;
+  graphicsQuality: GraphicsQuality;
+  mobileMode: boolean;
+  autoAim: boolean;
 }
 
 export interface CutsceneSubtitle {
@@ -108,6 +133,7 @@ export interface HudSnapshot {
   targetMushrooms: number | null;
   bestMushrooms: number;
   elapsedSeconds: number;
+  hardcoreTimeLeft: number | null;
   stamina: number;
   battery: number;
   hasBatteryLimit: boolean;
@@ -140,7 +166,7 @@ export interface HudSnapshot {
   windowBreachProgress: number;
   // Act 3 Malinka Park survival HUD state
   act3Night: number;
-  act3MaxNights: number;
+  act3MaxNights: number | null;
   act3IsNight: boolean;
   act3DayProgress: number;
   act3PhaseSecondsLeft: number;
@@ -157,6 +183,7 @@ export interface HudSnapshot {
   act3HasSniper: boolean;
   act3Hp: number;
   act3MaxHp: number;
+  act3RiddleModalOpen: boolean;
   // Act 4 JoJo Village defense HUD state
   act4Stage: 'walk_to_house' | 'battle';
   act4Kills: number;
@@ -180,4 +207,16 @@ export interface HudSnapshot {
   sniperMaxHp: number;
   sniperCooldownRatio: number;
   bestSniperKills: number;
+  // Parkour minigame HUD state
+  parkourCheckpoint: number;
+  parkourTotalCheckpoints: number;
+  parkourProgress: number;
+  // Plants vs Roner's HUD state
+  pvzEnergy: number;
+  pvzWave: number;
+  pvzMaxWaves: number;
+  pvzSelectedPlant: PvzPlantType;
+  pvzHoveredRow: number | null;
+  pvzHoveredCol: number | null;
+  pvzEnemiesRemaining: number;
 }

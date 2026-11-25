@@ -44,6 +44,7 @@ export const ACT3_CAMPFIRE_POS = { x: 0, z: 0 };
 export const ACT3_CRUSHER_POS = { x: -4.6, z: -1.8 };
 export const ACT3_MAP_POS = { x: 4.6, z: -2.0 };
 export const ACT3_BED_POS = { x: 4.4, z: 2.6 };
+export const ACT3_RIDDLE_POS = { x: 35.0, z: -35.0 };
 export const ACT3_PARK_RADIUS = 41.5;
 
 function makeParkGrassTexture(anisotropy: number): THREE.CanvasTexture {
@@ -876,8 +877,9 @@ export function buildAct3ParkScene(
     const rad = 14.5 + ((i * 19) % 24);
     const tx = Math.cos(ang) * rad;
     const tz = Math.sin(ang) * rad;
-    // Keep walkways clean
+    // Keep walkways and corner riddle sign clean
     if (Math.abs(tx) < 4.5 || Math.abs(tz) < 4.5) continue;
+    if (Math.hypot(tx - ACT3_RIDDLE_POS.x, tz - ACT3_RIDDLE_POS.z) < 4.5) continue;
 
     const tree = new THREE.Group();
     tree.position.set(tx, 0, tz);
@@ -1138,6 +1140,49 @@ export function buildAct3ParkScene(
   const explosionLight = new THREE.PointLight(0xffedd5, 0, 55, 1.1);
   explosionLight.position.set(0, 4.5, -7.5);
   worldGroup.add(explosionSphere, explosionRing, explosionLight);
+
+  // Corner Riddle Signboard: P+P=? (Jacque Fresco Riddle)
+  const riddleGroup = new THREE.Group();
+  riddleGroup.position.set(ACT3_RIDDLE_POS.x, 0, ACT3_RIDDLE_POS.z);
+  riddleGroup.rotation.y = -Math.PI * 0.75;
+  const riddlePostMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.86 });
+  for (const px of [-1.05, 1.05]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.14, 2.7, 8), riddlePostMat);
+    post.position.set(px, 1.35, 0);
+    riddleGroup.add(post);
+  }
+  const riddleTex = makeSignTexture(
+    'P + P = ?',
+    'ЗАГАДКА ЖАКА ФРЕСКО · [E]',
+    '#1f1608',
+    '#fde047',
+    '#f59e0b',
+    anisotropy
+  );
+  disposables.push(riddleTex);
+  const riddleBack = new THREE.Mesh(new THREE.BoxGeometry(2.75, 1.35, 0.14), riddlePostMat);
+  riddleBack.position.set(0, 2.05, -0.04);
+  const riddleFace = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.55, 1.18),
+    new THREE.MeshBasicMaterial({ map: riddleTex })
+  );
+  riddleFace.position.set(0, 2.05, 0.04);
+  const riddleRing = new THREE.Mesh(
+    new THREE.RingGeometry(1.15, 1.4, 24),
+    new THREE.MeshBasicMaterial({
+      color: 0xfacc15,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.7,
+    })
+  );
+  riddleRing.rotation.x = -Math.PI / 2;
+  riddleRing.position.y = 0.04;
+  const riddleLight = new THREE.PointLight(0xfacc15, 6.5, 12, 1.5);
+  riddleLight.position.set(0, 2.75, 0.65);
+  riddleGroup.add(riddleBack, riddleFace, riddleRing, riddleLight);
+  worldGroup.add(riddleGroup);
+  staticBoxColliders.push({ x: ACT3_RIDDLE_POS.x, z: ACT3_RIDDLE_POS.z, halfW: 0.9, halfD: 0.9 });
 
   scene.add(worldGroup);
 

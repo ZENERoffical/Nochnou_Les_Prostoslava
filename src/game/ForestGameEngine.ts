@@ -79,6 +79,7 @@ import {
   ACT3_CRUSHER_POS,
   ACT3_MAP_POS,
   ACT3_PARK_RADIUS,
+  ACT3_RIDDLE_POS,
   Act3ParkObjects,
   buildAct3ParkScene,
   createAct3LogMesh,
@@ -97,8 +98,26 @@ import {
   createAct4WeaponsViewModel,
 } from './act4Village';
 import {
+  buildParkourCourseScene,
+  ParkourCourseObjects,
+} from './parkourCourse';
+import {
+  buildPvzArenaScene,
+  createPvzBoltMesh,
+  createPvzPlantRig,
+  PVZ_COLS,
+  PVZ_HOUSE_DEFENSE_X,
+  PVZ_ROWS,
+  PVZ_SPAWN_X,
+  PVZ_TILE_SIZE,
+  pvzTileWorldPos,
+  PvzArenaObjects,
+  PvzPlantRig,
+} from './pvzArena';
+import {
   evaluateStatAchievements,
   loadAchievements,
+  recordHardcoreActClear,
   unlockSingleAchievement,
 } from './achievements';
 import {
@@ -111,8 +130,11 @@ import {
   GameMode,
   GamePhase,
   GameSettings,
+  GraphicsQuality,
   HudSnapshot,
+  PvzPlantType,
   SpeechBubbleState,
+  StoryActMode,
 } from '../types/game';
 
 const BEST_SCORE_KEY = 'prostophilya_best_mushrooms_v1';
@@ -130,6 +152,15 @@ const ACT3_LV4_METAL_COST = 8;
 const ACT3_LV5_METAL_COST = 10;
 const ACT3_LV6_METAL_COST = 12;
 const ACT3_BOSS_MAX_HP = 14;
+const HARDCORE_DURATION_SECONDS = 120.0;
+const PVZ_COSTS: Record<PvzPlantType, number> = {
+  sun: 50,
+  peashooter: 100,
+  repeater: 175,
+  wallnut: 75,
+  shovel: 0,
+};
+const PVZ_WAVE_COUNTS = [5, 8, 12, 16];
 const ACT4_WAVE_COUNTS = [5, 10, 20, 40, 60, 67, 1];
 const ACT4_BOSS_MAX_HP = 11488;
 const ACT4_WEAPON_ORDER: Act4WeaponId[] = [
@@ -182,7 +213,9 @@ type ActiveWorldType =
   | 'sniper_arena'
   | 'malinka_city'
   | 'act3_park'
-  | 'act4_village';
+  | 'act4_village'
+  | 'parkour_course'
+  | 'pvz_arena';
 
 // Pre-allocated math helpers for zero-GC per-frame loop
 const _vec3 = new THREE.Vector3();
@@ -341,8 +374,27 @@ export class ForestGameEngine {
   private malinkaObjs: MalinkaCityObjects | null = null;
   private act3ParkObjs: Act3ParkObjects | null = null;
   private act4VillageObjs: Act4VillageObjects | null = null;
+  private parkourObjs: ParkourCourseObjects | null = null;
+  private pvzArenaObjs: PvzArenaObjects | null = null;
   private activeWorldType: ActiveWorldType = 'story_forest';
+  private baseBgHex = 0x071018;
+  private baseFogDensity = 0.052;
+  private orientationBlocked = false;
   private memeTexture: THREE.Texture | null = null;
+
+  // Hardcore mode map flames & 2-minute lethal timer
+  private hardcoreTimeLeft = HARDCORE_DURATION_SECONDS;
+  private hardcoreBurnout = false;
+  private hardcoreFireGroup = new THREE.Group();
+  private hardcoreFlames: Array<{
+    group: THREE.Group;
+    outer: THREE.Mesh;
+    inner: THREE.Mesh;
+    angle: number;
+    radius: number;
+    phase: number;
+  }> = [];
+  private hardcoreFireLights: THREE.PointLight[] = [];
 
   // Story Gates, Factory Building & Batteries
   private startGate: GateRig | null = null;
@@ -424,7 +476,9 @@ export class ForestGameEngine {
   private act3InvulnTimer = 0;
   private act3CrusherSpinTimer = 0;
   private act3ExplosionTimer = 0;
-  private act3NearStation: 'campfire' | 'crusher' | 'map' | 'bed' | 'log' | 'metal' | null = null;
+  private act3RiddleModalOpen = false;
+  private act3RiddleSolved = false;
+  private act3NearStation: 'campfire' | 'crusher' | 'map' | 'bed' | 'log' | 'metal' | 'riddle' | null = null;
   private act3NearItemId: number | null = null;
   private act3NightRonerStates: Array<{
     flank: 'behind' | 'right' | 'left';
@@ -436,6 +490,41 @@ export class ForestGameEngine {
     { flank: 'right', lightExposure: 0, retreatTimer: 0, respawnTimer: 2.0 },
     { flank: 'left', lightExposure: 0, retreatTimer: 0, respawnTimer: 3.2 },
   ];
+
+  // Parkour Minigame State
+  private parkourCheckpoint = 0;
+  private parkourTotalCheckpoints = 4;
+  private parkourRidingIdx: number | null = null;
+
+  // Plants vs Roner's Minigame State
+  private pvzEnergy = 150;
+  private pvzWave = 1;
+  private pvzWaveToSpawn = 0;
+  private pvzWaveSpawnTimer = 0;
+  private pvzWavePauseTimer = 0;
+  private pvzSelectedPlant: PvzPlantType = 'peashooter';
+  private pvzHoveredRow: number | null = null;
+  private pvzHoveredCol: number | null = null;
+  private pvzPlants: Array<{
+    row: number;
+    col: number;
+    kind: Exclude<PvzPlantType, 'shovel'>;
+    hp: number;
+    maxHp: number;
+    cooldown: number;
+    rig: PvzPlantRig;
+  }> = [];
+  private pvzBolts: Array<{
+    mesh: THREE.Mesh;
+    row: number;
+    x: number;
+    z: number;
+    dmg: number;
+    active: boolean;
+  }> = [];
+  private pvzCloneRows: number[] = new Array(26).fill(0);
+  private pvzRaycaster = new THREE.Raycaster();
+  private pvzMouseNdc = new THREE.Vector2();
 
   // Act 4 «JoJo» Village Defense State
   private act4FpWeapons: Act4WeaponViewModels;
@@ -857,6 +946,10 @@ export class ForestGameEngine {
       });
     }
 
+    this.audio.setLanguage(this.settings.language);
+    this.createHardcoreFirePool();
+    this.applyGraphicsQuality();
+    this.applyAtmosphereSettings(0x071018, 0.052);
     this.setupTitleShowcase();
 
     if (!this.isSoftwareGl) {
@@ -969,6 +1062,144 @@ export class ForestGameEngine {
     this.act3Metals = [];
   }
 
+  private getEnemySpeedMultiplier(): number {
+    return this.settings.hardcoreMode ? 1.38 : 1.0;
+  }
+
+  private createHardcoreFirePool(): void {
+    const outerGeo = new THREE.ConeGeometry(0.44, 1.55, 6);
+    const innerGeo = new THREE.ConeGeometry(0.24, 0.98, 5);
+    const outerMat = new THREE.MeshBasicMaterial({
+      color: 0xf97316,
+      transparent: true,
+      opacity: 0.85,
+    });
+    const innerMat = new THREE.MeshBasicMaterial({
+      color: 0xfde047,
+      transparent: true,
+      opacity: 0.94,
+    });
+
+    for (let i = 0; i < 18; i++) {
+      const grp = new THREE.Group();
+      const outer = new THREE.Mesh(outerGeo, outerMat);
+      outer.position.y = 0.78;
+      const inner = new THREE.Mesh(innerGeo, innerMat);
+      inner.position.y = 0.56;
+      grp.add(outer, inner);
+      const angle = (i / 18) * Math.PI * 2 + (i % 3) * 0.17;
+      const radius = 6.5 + (i % 4) * 3.8;
+      grp.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+      this.hardcoreFireGroup.add(grp);
+      this.hardcoreFlames.push({
+        group: grp,
+        outer,
+        inner,
+        angle,
+        radius,
+        phase: i * 1.1,
+      });
+    }
+
+    for (let i = 0; i < 2; i++) {
+      const l = new THREE.PointLight(0xff5500, 14, 24, 1.3);
+      l.position.set(i === 0 ? -7 : 7, 2.2, i === 0 ? -7 : 7);
+      this.hardcoreFireGroup.add(l);
+      this.hardcoreFireLights.push(l);
+    }
+
+    this.hardcoreFireGroup.visible = false;
+    this.scene.add(this.hardcoreFireGroup);
+  }
+
+  private updateHardcoreFirePool(elapsed: number): void {
+    const showFire = this.settings.hardcoreMode && this.phase !== 'act3_secret';
+    this.hardcoreFireGroup.visible = showFire;
+    if (!showFire) return;
+
+    this.hardcoreFireGroup.position.set(this.playerX, this.playerY, this.playerZ);
+    for (const fl of this.hardcoreFlames) {
+      const pulse = 0.85 + Math.sin(elapsed * 14 + fl.phase) * 0.25;
+      fl.group.scale.set(0.95 + Math.sin(elapsed * 9 + fl.phase) * 0.14, pulse, 0.95);
+      fl.inner.rotation.y = elapsed * 4 + fl.phase;
+    }
+    for (let i = 0; i < this.hardcoreFireLights.length; i++) {
+      this.hardcoreFireLights[i].intensity = 12 + Math.sin(elapsed * 18 + i * 2.1) * 5;
+    }
+  }
+
+  private applyAtmosphereSettings(baseBgHex: number, baseDensity: number): void {
+    this.baseBgHex = baseBgHex;
+    this.baseFogDensity = baseDensity;
+    if (this.settings.voidMode) {
+      this.scene.background = new THREE.Color(0x020204);
+      this.fog.color.setHex(0x020204);
+      this.fog.density = 0.23;
+    } else {
+      this.scene.background = new THREE.Color(baseBgHex);
+      this.fog.color.setHex(baseBgHex);
+      this.fog.density = baseDensity;
+    }
+  }
+
+  private applyGraphicsQuality(): void {
+    const q: GraphicsQuality = this.settings.graphicsQuality;
+    if (q === 'low') {
+      this.renderer.setPixelRatio(0.75);
+      this.renderer.shadowMap.enabled = false;
+      this.moonLight.castShadow = false;
+      this.flashlightSpot.castShadow = false;
+      this.camera.far = 115;
+      this.scene.environmentIntensity = 0.15;
+    } else if (q === 'medium') {
+      this.renderer.setPixelRatio(1);
+      this.renderer.shadowMap.enabled = false;
+      this.moonLight.castShadow = false;
+      this.flashlightSpot.castShadow = false;
+      this.camera.far = 185;
+      this.scene.environmentIntensity = 0.2;
+    } else {
+      this.renderer.setPixelRatio(
+        this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2)
+      );
+      this.renderer.shadowMap.enabled = !this.isSoftwareGl;
+      this.moonLight.castShadow = !this.isSoftwareGl;
+      this.flashlightSpot.castShadow = !this.isSoftwareGl;
+      this.camera.far = 260;
+      this.scene.environmentIntensity = 0.24;
+    }
+    this.camera.updateProjectionMatrix();
+  }
+
+  public setOrientationBlocked(blocked: boolean): void {
+    if (this.orientationBlocked === blocked) return;
+    this.orientationBlocked = blocked;
+    if (blocked) {
+      this.heldKeys.clear();
+      this.isPrimaryFireHeld = false;
+      this.virtualMoveX = 0;
+      this.virtualMoveZ = 0;
+      if (document.pointerLockElement === this.renderer.domElement) {
+        document.exitPointerLock?.();
+      }
+    } else {
+      this.clock.getDelta();
+    }
+  }
+
+  private clearPvzDynamicEntities(): void {
+    for (const p of this.pvzPlants) {
+      this.scene.remove(p.rig.group);
+      this.disposeObjectResources(p.rig.group);
+    }
+    this.pvzPlants = [];
+    for (const b of this.pvzBolts) {
+      this.scene.remove(b.mesh);
+      this.disposeObjectResources(b.mesh);
+    }
+    this.pvzBolts = [];
+  }
+
   private setActiveWorld(targetWorld: ActiveWorldType, hardcoreFog = false): void {
     if (targetWorld === this.activeWorldType) return;
 
@@ -1020,6 +1251,25 @@ export class ForestGameEngine {
         this.disposeObjectResources(this.act4VillageObjs.worldGroup);
         this.act4VillageObjs = null;
       }
+    } else if (this.activeWorldType === 'parkour_course') {
+      if (this.parkourObjs) {
+        this.scene.remove(this.parkourObjs.worldGroup);
+        for (const d of this.parkourObjs.disposables) {
+          d.dispose();
+        }
+        this.disposeObjectResources(this.parkourObjs.worldGroup);
+        this.parkourObjs = null;
+      }
+    } else if (this.activeWorldType === 'pvz_arena') {
+      this.clearPvzDynamicEntities();
+      if (this.pvzArenaObjs) {
+        this.scene.remove(this.pvzArenaObjs.worldGroup);
+        for (const d of this.pvzArenaObjs.disposables) {
+          d.dispose();
+        }
+        this.disposeObjectResources(this.pvzArenaObjs.worldGroup);
+        this.pvzArenaObjs = null;
+      }
     } else {
       this.clearMushrooms();
       this.clearBatteries();
@@ -1034,10 +1284,7 @@ export class ForestGameEngine {
     this.activeWorldType = targetWorld;
 
     if (targetWorld === 'factory') {
-      const factoryBg = 0x0b1016;
-      this.scene.background = new THREE.Color(factoryBg);
-      this.fog.color.setHex(factoryBg);
-      this.fog.density = 0.022;
+      this.applyAtmosphereSettings(0x0b1016, 0.022);
       this.moonLight.intensity = 0.25;
       this.factoryObjs = buildFactoryEnvironment(
         this.scene,
@@ -1045,10 +1292,7 @@ export class ForestGameEngine {
         this.isSoftwareGl
       );
     } else if (targetWorld === 'sniper_arena') {
-      const yardBg = 0x080e16;
-      this.scene.background = new THREE.Color(yardBg);
-      this.fog.color.setHex(yardBg);
-      this.fog.density = 0.016;
+      this.applyAtmosphereSettings(0x080e16, 0.016);
       this.moonLight.intensity = 0.45;
       this.sniperArenaObjs = buildSniperArenaScene(
         this.scene,
@@ -1056,10 +1300,7 @@ export class ForestGameEngine {
         this.isSoftwareGl
       );
     } else if (targetWorld === 'malinka_city') {
-      const cityBg = 0x0d0916;
-      this.scene.background = new THREE.Color(cityBg);
-      this.fog.color.setHex(cityBg);
-      this.fog.density = 0.011;
+      this.applyAtmosphereSettings(0x0d0916, 0.011);
       this.moonLight.intensity = 0.55;
       this.malinkaObjs = buildMalinkaEntranceScene(
         this.scene,
@@ -1067,10 +1308,7 @@ export class ForestGameEngine {
         this.isSoftwareGl
       );
     } else if (targetWorld === 'act3_park') {
-      const parkBg = 0x0d1522;
-      this.scene.background = new THREE.Color(parkBg);
-      this.fog.color.setHex(parkBg);
-      this.fog.density = 0.014;
+      this.applyAtmosphereSettings(0x0d1522, 0.014);
       this.moonLight.intensity = 0.52;
       this.act3ParkObjs = buildAct3ParkScene(
         this.scene,
@@ -1078,21 +1316,31 @@ export class ForestGameEngine {
         this.isSoftwareGl
       );
     } else if (targetWorld === 'act4_village') {
-      const villageBg = 0x151128;
-      this.scene.background = new THREE.Color(villageBg);
-      this.fog.color.setHex(villageBg);
-      this.fog.density = 0.011;
+      this.applyAtmosphereSettings(0x151128, 0.011);
       this.moonLight.intensity = 0.82;
       this.act4VillageObjs = buildAct4VillageScene(
         this.scene,
         this.anisotropy,
         this.isSoftwareGl
       );
+    } else if (targetWorld === 'parkour_course') {
+      this.applyAtmosphereSettings(0x0c1428, 0.008);
+      this.moonLight.intensity = 0.88;
+      this.parkourObjs = buildParkourCourseScene(
+        this.scene,
+        this.anisotropy,
+        this.isSoftwareGl
+      );
+    } else if (targetWorld === 'pvz_arena') {
+      this.applyAtmosphereSettings(0x0f1f18, 0.01);
+      this.moonLight.intensity = 0.86;
+      this.pvzArenaObjs = buildPvzArenaScene(
+        this.scene,
+        this.anisotropy,
+        this.isSoftwareGl
+      );
     } else {
-      const nightHorizon = 0x071018;
-      this.scene.background = new THREE.Color(nightHorizon);
-      this.fog.color.setHex(nightHorizon);
-      this.fog.density = hardcoreFog ? 0.062 : 0.052;
+      this.applyAtmosphereSettings(0x071018, hardcoreFog ? 0.062 : 0.052);
       this.moonLight.intensity = 0.48;
 
       const wantsStory = targetWorld === 'story_forest';
@@ -1117,34 +1365,44 @@ export class ForestGameEngine {
     const targetWorld: ActiveWorldType =
       mode === 'story_act4'
         ? 'act4_village'
-        : mode === 'story_act3'
+        : mode === 'story_act3' || mode === 'act3_survival'
           ? 'act3_park'
-          : mode === 'story_act2' || mode === 'fnaf_epta'
-            ? 'factory'
-            : mode === 'sniper_minigame'
-              ? 'sniper_arena'
-              : mode === 'story_act1'
-                ? 'story_forest'
-                : 'arena_forest';
+          : mode === 'parkour_minigame'
+            ? 'parkour_course'
+            : mode === 'plants_vs_roners'
+              ? 'pvz_arena'
+              : mode === 'story_act2' || mode === 'fnaf_epta'
+                ? 'factory'
+                : mode === 'sniper_minigame'
+                  ? 'sniper_arena'
+                  : mode === 'story_act1'
+                    ? 'story_forest'
+                    : 'arena_forest';
     this.setActiveWorld(targetWorld, mode === 'hardcore_third_person');
   }
 
   public setMode(mode: GameMode): void {
     this.mode = mode;
     if (mode === 'story_act4') {
-      this.fog.density = 0.011;
+      this.applyAtmosphereSettings(0x151128, 0.011);
       this.camera.fov = 72;
-    } else if (mode === 'story_act3') {
-      this.fog.density = 0.014;
+    } else if (mode === 'story_act3' || mode === 'act3_survival') {
+      this.applyAtmosphereSettings(0x0d1522, 0.014);
       this.camera.fov = 72;
+    } else if (mode === 'parkour_minigame') {
+      this.applyAtmosphereSettings(0x0c1428, 0.008);
+      this.camera.fov = 74;
+    } else if (mode === 'plants_vs_roners') {
+      this.applyAtmosphereSettings(0x0f1f18, 0.01);
+      this.camera.fov = 70;
     } else if (mode === 'story_act2' || mode === 'fnaf_epta') {
-      this.fog.density = 0.022;
+      this.applyAtmosphereSettings(0x0b1016, 0.022);
       this.camera.fov = 72;
     } else if (mode === 'sniper_minigame') {
-      this.fog.density = 0.016;
+      this.applyAtmosphereSettings(0x080e16, 0.016);
       this.camera.fov = 70;
     } else {
-      this.fog.density = mode === 'hardcore_third_person' ? 0.062 : 0.052;
+      this.applyAtmosphereSettings(0x071018, mode === 'hardcore_third_person' ? 0.062 : 0.052);
       this.camera.fov = mode === 'hardcore_third_person' ? 58 : 70;
     }
     this.camera.updateProjectionMatrix();
@@ -1157,13 +1415,27 @@ export class ForestGameEngine {
 
   public setSettings(next: GameSettings): void {
     const normalized: GameSettings = {
-      language: next.language === 'en' ? 'en' : 'ru',
+      language: next.language === 'en' ? 'en' : next.language === 'pl' ? 'pl' : 'ru',
       familyMode: Boolean(next.familyMode),
       censorship: next.familyMode ? true : Boolean(next.censorship),
+      hardcoreMode: Boolean(next.hardcoreMode),
+      voidMode: Boolean(next.voidMode),
+      graphicsQuality:
+        next.graphicsQuality === 'low' ||
+        next.graphicsQuality === 'medium' ||
+        next.graphicsQuality === 'high'
+          ? next.graphicsQuality
+          : 'high',
+      mobileMode: Boolean(next.mobileMode),
+      autoAim: Boolean(next.autoAim),
     };
     this.settings = normalized;
     saveSettings(normalized);
-    const isEn = normalized.language === 'en';
+    this.audio.setLanguage(normalized.language);
+    this.applyGraphicsQuality();
+    this.applyAtmosphereSettings(this.baseBgHex, this.baseFogDensity);
+
+    const isEn = normalized.language === 'en' || normalized.language === 'pl';
 
     if (this.phase === 'act2_teaser') {
       const key = this.isSecretPreviewOnly ? 'act2_secret' : 'act2_teaser';
@@ -1296,7 +1568,7 @@ export class ForestGameEngine {
 
   private syncAct2EnemyAppearance(): void {
     const isFactoryMode = this.mode === 'story_act2' || this.mode === 'fnaf_epta';
-    const isAct3 = this.mode === 'story_act3';
+    const isAct3 = this.mode === 'story_act3' || this.mode === 'act3_survival';
     const isAct4 = this.mode === 'story_act4';
     const roner = this.chasers[0];
     const sasha = this.chasers[1];
@@ -1359,6 +1631,9 @@ export class ForestGameEngine {
     this.caughtTimer = 0;
     this.cameraShake = 0;
     this.hitstopTimer = 0;
+    this.hardcoreBurnout = false;
+    this.hardcoreTimeLeft = HARDCORE_DURATION_SECONDS;
+    this.act3RiddleModalOpen = false;
     this.sachetHand.group.visible = false;
     this.fpSniper.group.visible = false;
     this.fpSniper.muzzleFlash.visible = false;
@@ -1386,6 +1661,7 @@ export class ForestGameEngine {
     this.sanyaState = 'dormant';
     this.ronerState = 'dormant';
     this.windowBreachProgress = 0;
+    this.clearPvzDynamicEntities();
 
     if (document.pointerLockElement === this.renderer.domElement) {
       document.exitPointerLock?.();
@@ -1467,7 +1743,7 @@ export class ForestGameEngine {
     }
 
     if (this.mode === 'story_act4' && this.act4VillageObjs) {
-      this.fog.density = 0.011;
+      this.applyAtmosphereSettings(0x151128, 0.011);
       this.playerX = 0;
       this.playerZ = -6.0;
       this.playerY = 0;
@@ -1510,8 +1786,8 @@ export class ForestGameEngine {
       return;
     }
 
-    if (this.mode === 'story_act3' && this.act3ParkObjs) {
-      this.fog.density = 0.014;
+    if ((this.mode === 'story_act3' || this.mode === 'act3_survival') && this.act3ParkObjs) {
+      this.applyAtmosphereSettings(0x0d1522, 0.014);
       this.playerX = -2.2;
       this.playerZ = 3.2;
       this.playerY = 0;
@@ -1548,10 +1824,50 @@ export class ForestGameEngine {
       return;
     }
 
+    if (this.mode === 'parkour_minigame' && this.parkourObjs) {
+      this.applyAtmosphereSettings(0x0c1428, 0.008);
+      this.playerX = 0;
+      this.playerZ = 0;
+      this.playerY = 0;
+      this.playerYaw = Math.PI;
+      this.playerRig.root.visible = true;
+      this.playerRig.root.position.set(0, 0, 0);
+      this.playerRig.root.rotation.y = this.playerYaw;
+      this.playerRig.bodyPivot.rotation.x = 0;
+      this.playerRig.bodyPivot.position.y = 0;
+      this.tpFlashlight.group.visible = false;
+      this.chasers[0].active = false;
+      this.chasers[0].rig.root.visible = false;
+      this.chasers[1].active = false;
+      this.chasers[1].rig.root.visible = false;
+      return;
+    }
+
+    if (this.mode === 'plants_vs_roners' && this.pvzArenaObjs) {
+      this.applyAtmosphereSettings(0x0f1f18, 0.01);
+      this.playerX = -11.5;
+      this.playerZ = 0;
+      this.playerY = 0;
+      this.playerYaw = Math.PI / 2;
+      this.playerRig.root.visible = true;
+      this.playerRig.root.position.set(this.playerX, 0, this.playerZ);
+      this.playerRig.root.rotation.y = this.playerYaw;
+      this.tpFlashlight.group.visible = false;
+      this.chasers[0].active = true;
+      this.chasers[0].x = 6.5;
+      this.chasers[0].z = -3.0;
+      this.chasers[0].rig.root.visible = true;
+      this.chasers[0].rig.root.position.set(6.5, 0, -3.0);
+      this.chasers[0].rig.root.rotation.y = -Math.PI / 2;
+      this.chasers[1].active = false;
+      this.chasers[1].rig.root.visible = false;
+      return;
+    }
+
     this.syncAct2EnemyAppearance();
 
     if (this.mode === 'sniper_minigame' && this.sniperArenaObjs) {
-      this.fog.density = 0.016;
+      this.applyAtmosphereSettings(0x080e16, 0.016);
       this.playerX = 0;
       this.playerZ = 2.5;
       this.playerY = 0;
@@ -1587,7 +1903,7 @@ export class ForestGameEngine {
     }
 
     if ((this.mode === 'story_act2' || this.mode === 'fnaf_epta') && this.factoryObjs) {
-      this.fog.density = 0.022;
+      this.applyAtmosphereSettings(0x0b1016, 0.022);
       this.playerX = -2.0;
       this.playerZ = 3.8;
       this.playerY = 0;
@@ -1644,7 +1960,10 @@ export class ForestGameEngine {
       return;
     }
 
-    this.fog.density = this.mode === 'hardcore_third_person' ? 0.062 : 0.052;
+    this.applyAtmosphereSettings(
+      0x071018,
+      this.mode === 'hardcore_third_person' ? 0.062 : 0.052
+    );
     this.playerX = 0;
     this.playerZ = -2;
     this.playerY = groundHeightAt(0, -2);
@@ -1707,19 +2026,28 @@ export class ForestGameEngine {
     const activeMode = selectedMode ?? this.mode;
     this.mode = activeMode;
     if (activeMode === 'story_act4') {
-      this.fog.density = 0.011;
+      this.applyAtmosphereSettings(0x151128, 0.011);
       this.camera.fov = 72;
-    } else if (activeMode === 'story_act3') {
-      this.fog.density = 0.014;
+    } else if (activeMode === 'story_act3' || activeMode === 'act3_survival') {
+      this.applyAtmosphereSettings(0x0d1522, 0.014);
       this.camera.fov = 72;
+    } else if (activeMode === 'parkour_minigame') {
+      this.applyAtmosphereSettings(0x0c1428, 0.008);
+      this.camera.fov = 74;
+    } else if (activeMode === 'plants_vs_roners') {
+      this.applyAtmosphereSettings(0x0f1f18, 0.01);
+      this.camera.fov = 70;
     } else if (activeMode === 'story_act2' || activeMode === 'fnaf_epta') {
-      this.fog.density = 0.022;
+      this.applyAtmosphereSettings(0x0b1016, 0.022);
       this.camera.fov = 72;
     } else if (activeMode === 'sniper_minigame') {
-      this.fog.density = 0.016;
+      this.applyAtmosphereSettings(0x080e16, 0.016);
       this.camera.fov = 70;
     } else {
-      this.fog.density = activeMode === 'hardcore_third_person' ? 0.062 : 0.052;
+      this.applyAtmosphereSettings(
+        0x071018,
+        activeMode === 'hardcore_third_person' ? 0.062 : 0.052
+      );
       this.camera.fov = activeMode === 'hardcore_third_person' ? 58 : 70;
     }
     this.camera.updateProjectionMatrix();
@@ -1731,6 +2059,9 @@ export class ForestGameEngine {
     this.flashlightOn = true;
     this.battery = 100;
     this.elapsedPlaying = 0;
+    this.hardcoreTimeLeft = HARDCORE_DURATION_SECONDS;
+    this.hardcoreBurnout = false;
+    this.act3RiddleModalOpen = false;
     this.stamina = 100;
     this.speedBoostTimer = 0;
     this.killerId = null;
@@ -1760,6 +2091,12 @@ export class ForestGameEngine {
       return;
     }
 
+    if (activeMode === 'act3_survival') {
+      this.syncAct2EnemyAppearance();
+      this.beginAct3Playing();
+      return;
+    }
+
     if (activeMode === 'story_act4') {
       this.startAct4IntroCutscene();
       return;
@@ -1772,6 +2109,16 @@ export class ForestGameEngine {
 
     if (activeMode === 'sniper_minigame') {
       this.startSniperMinigame();
+      return;
+    }
+
+    if (activeMode === 'parkour_minigame') {
+      this.startParkourMinigame();
+      return;
+    }
+
+    if (activeMode === 'plants_vs_roners') {
+      this.startPvzMinigame();
       return;
     }
 
@@ -1819,7 +2166,7 @@ export class ForestGameEngine {
     this.chasers[1].currentBubbleText = null;
     this.chasers[1].isScream = false;
 
-    this.fog.density = 0.032;
+    this.applyAtmosphereSettings(0x071018, 0.032);
     this.populateStoryTrailCollectibles();
     this.pushHud(true);
   }
@@ -1901,9 +2248,6 @@ export class ForestGameEngine {
     };
     this.audio.playDialogueLine(line.speech, 1.04, line.hasCensorBeep);
 
-    const unlocked = unlockSingleAchievement(this.achievements, 'secret_malinka');
-    this.emitAchievementResult(unlocked);
-
     this.callbacks.onBubblesUpdate([]);
     this.pushHud(true);
   }
@@ -1913,7 +2257,10 @@ export class ForestGameEngine {
     const isFP = this.mode === 'first_person' || isStory;
 
     this.phase = 'playing';
-    this.fog.density = this.mode === 'hardcore_third_person' ? 0.062 : 0.052;
+    this.applyAtmosphereSettings(
+      0x071018,
+      this.mode === 'hardcore_third_person' ? 0.062 : 0.052
+    );
     this.cutsceneSubtitle = null;
     this.playerBubbleText = null;
     this.flashlightOn = true;
@@ -2041,7 +2388,7 @@ export class ForestGameEngine {
 
   private startOutroCutscene(): void {
     this.phase = 'outro_cutscene';
-    this.fog.density = 0.028;
+    this.applyAtmosphereSettings(0x071018, 0.028);
     this.cutsceneTimer = 0;
     this.cutsceneStage = -1;
     this.heldKeys.clear();
@@ -2083,7 +2430,7 @@ export class ForestGameEngine {
   private beginAct2Teaser(secretOnly = false): void {
     this.phase = 'act2_teaser';
     this.isSecretPreviewOnly = secretOnly;
-    this.fog.density = 0.026;
+    this.applyAtmosphereSettings(0x071018, 0.026);
     this.cutsceneTimer = 0;
     this.cutsceneStage = -1;
     this.flashlightOn = false;
@@ -2133,7 +2480,10 @@ export class ForestGameEngine {
     this.cutsceneSubtitle = null;
     this.playerBubbleText = null;
     const unlocked = unlockSingleAchievement(this.achievements, 'act1_clear');
-    this.emitAchievementResult(unlocked);
+    const hcUnlocked = this.settings.hardcoreMode
+      ? recordHardcoreActClear(this.achievements, 'story_act1')
+      : [];
+    this.emitAchievementResult([...unlocked, ...hcUnlocked]);
     this.audio.playVictoryFanfare();
     this.pushHud(true);
   }
@@ -2411,7 +2761,7 @@ export class ForestGameEngine {
 
   private beginFactoryPlaying(): void {
     this.phase = 'playing';
-    this.fog.density = 0.022;
+    this.applyAtmosphereSettings(0x0b1016, 0.022);
     this.cutsceneSubtitle = null;
     this.playerBubbleText = null;
     this.flashlightOn = true;
@@ -2967,7 +3317,10 @@ export class ForestGameEngine {
     this.nikitaSniperRifle.visible = false;
     for (const tr of this.sniperTracers) tr.visible = false;
     const unlocked = unlockSingleAchievement(this.achievements, 'act2_clear');
-    this.emitAchievementResult(unlocked);
+    const hcUnlocked = this.settings.hardcoreMode
+      ? recordHardcoreActClear(this.achievements, 'story_act2')
+      : [];
+    this.emitAchievementResult([...unlocked, ...hcUnlocked]);
     this.audio.playVictoryFanfare();
     this.pushHud(true);
   }
@@ -3478,19 +3831,23 @@ export class ForestGameEngine {
   private updateFlashlightRig(elapsed: number, hasMove: boolean): void {
     const isFactoryMode = this.mode === 'story_act2' || this.mode === 'fnaf_epta';
     const isSniperMode = this.mode === 'sniper_minigame';
-    const isAct3Sniper = this.mode === 'story_act3' && this.act3HasSniper && this.phase === 'playing';
+    const isAct3Mode = this.mode === 'story_act3' || this.mode === 'act3_survival';
+    const isAct3Sniper = isAct3Mode && this.act3HasSniper && this.phase === 'playing';
     const isAct4 = this.mode === 'story_act4';
     const isAct4Battle = isAct4 && this.act4Stage === 'battle' && this.phase === 'playing';
+    const isParkourOrPvz =
+      this.mode === 'parkour_minigame' || this.mode === 'plants_vs_roners';
     const isFP =
       this.mode === 'first_person' ||
       this.mode === 'story_act1' ||
-      this.mode === 'story_act3' ||
+      isAct3Mode ||
       isAct4 ||
       isFactoryMode ||
       isSniperMode;
     const isPlaying = this.phase === 'playing';
 
     if (
+      isParkourOrPvz ||
       this.phase === 'act3_secret' ||
       this.phase === 'act3_intro_cutscene' ||
       this.phase === 'act3_outro_cutscene' ||
@@ -3515,12 +3872,12 @@ export class ForestGameEngine {
       this.act4FpWeapons.group.visible = false;
       this.act4FpWeapons.muzzleFlash.visible = false;
       this.act4FpWeapons.flameJet.visible = false;
-      if (isSniperMode || this.mode === 'story_act3' || isAct4) {
+      if (isSniperMode || isAct3Mode || isAct4) {
         this.flashlightSpot.visible = true;
         this.flashlightSpot.intensity = 22;
         this.flashlightSpot.position.set(0, 8, 6);
         this.flashlightTarget.position.set(0, 1, -8);
-        this.tpFlashlight.group.visible = this.mode === 'story_act3';
+        this.tpFlashlight.group.visible = isAct3Mode;
         return;
       }
       this.flashlightSpot.visible = true;
@@ -4541,15 +4898,16 @@ export class ForestGameEngine {
         let goalX: number;
         let goalZ: number;
         let moveSpd: number;
+        const spdMult = this.getEnemySpeedMultiplier();
         if (canSensePlayer) {
           goalX = this.playerX;
           goalZ = this.playerZ;
-          moveSpd = inCorridor ? 6.9 : 7.7;
+          moveSpd = (inCorridor ? 6.9 : 7.7) * spdMult;
         } else if (inCorridor) {
           // Walk past the corridor closet while player hides
           goalX = CORRIDOR_X;
           goalZ = sasha.z > this.playerZ ? -26.5 : CORRIDOR_END_Z + 6.5;
-          moveSpd = 6.2;
+          moveSpd = 6.2 * spdMult;
         } else {
           const wp = SANYA_PATROL_ROUTE[this.sanyaWaypointIdx % SANYA_PATROL_ROUTE.length];
           if (Math.hypot(wp.x - sasha.x, wp.z - sasha.z) < 1.6) {
@@ -4559,7 +4917,7 @@ export class ForestGameEngine {
           const nav = this.getFactoryNavTarget(sasha.x, sasha.z, nextWp.x, nextWp.z);
           goalX = nav.x;
           goalZ = nav.z;
-          moveSpd = 5.8;
+          moveSpd = 5.8 * spdMult;
         }
 
         const dx = goalX - sasha.x;
@@ -4595,8 +4953,9 @@ export class ForestGameEngine {
         const dx = nav.x - sasha.x;
         const dz = nav.z - sasha.z;
         const len = Math.hypot(dx, dz) || 1;
-        sasha.x += (dx / len) * 6.8 * dt;
-        sasha.z += (dz / len) * 6.8 * dt;
+        const leaveSpd = 6.8 * this.getEnemySpeedMultiplier();
+        sasha.x += (dx / len) * leaveSpd * dt;
+        sasha.z += (dz / len) * leaveSpd * dt;
         const res = this.resolveFactoryCollision(sasha.x, sasha.z, 0.5);
         sasha.x = res.x;
         sasha.z = res.z;
@@ -4798,8 +5157,9 @@ export class ForestGameEngine {
         const dx = nav.x - roner.x;
         const dz = nav.z - roner.z;
         const dist = Math.hypot(dx, dz) || 1;
-        roner.x += (dx / dist) * 8.6 * dt;
-        roner.z += (dz / dist) * 8.6 * dt;
+        const ronerSpd = 8.6 * this.getEnemySpeedMultiplier();
+        roner.x += (dx / dist) * ronerSpd * dt;
+        roner.z += (dz / dist) * ronerSpd * dt;
         const res = this.resolveFactoryCollision(roner.x, roner.z, 0.5);
         roner.x = res.x;
         roner.z = res.z;
@@ -4849,7 +5209,7 @@ export class ForestGameEngine {
       return;
     }
 
-    if (this.mode === 'story_act3') {
+    if (this.mode === 'story_act3' || this.mode === 'act3_survival') {
       this.updateAct3Playing(dt, elapsed);
       return;
     }
@@ -4861,6 +5221,16 @@ export class ForestGameEngine {
 
     if (this.mode === 'sniper_minigame') {
       this.updateSniperMinigame(dt, elapsed);
+      return;
+    }
+
+    if (this.mode === 'parkour_minigame') {
+      this.updateParkourMinigame(dt, elapsed);
+      return;
+    }
+
+    if (this.mode === 'plants_vs_roners') {
+      this.updatePvzMinigame(dt, elapsed);
       return;
     }
 
@@ -5250,7 +5620,7 @@ export class ForestGameEngine {
       }
       _vec3.add(_avoidVec).normalize();
 
-      const chaserSpeed = c.baseSpeed + difficultyRamp;
+      const chaserSpeed = (c.baseSpeed + difficultyRamp) * this.getEnemySpeedMultiplier();
       c.x += _vec3.x * chaserSpeed * dt;
       c.z += _vec3.z * chaserSpeed * dt;
 
@@ -5484,6 +5854,7 @@ export class ForestGameEngine {
 
   private beginAct3Playing(): void {
     this.phase = 'playing';
+    this.applyAtmosphereSettings(0x0d1522, 0.014);
     this.cutsceneSubtitle = null;
     this.playerBubbleText = null;
     this.flashlightOn = true;
@@ -5500,6 +5871,8 @@ export class ForestGameEngine {
     this.act3Hp = this.act3MaxHp;
     this.act3InvulnTimer = 0;
     this.act3CrusherSpinTimer = 0;
+    this.act3RiddleModalOpen = false;
+    this.act3RiddleSolved = false;
 
     this.playerX = 0;
     this.playerZ = 3.2;
@@ -5568,11 +5941,55 @@ export class ForestGameEngine {
       this.act3NightRonerStates[i].respawnTimer = initDelays[i];
     }
 
-    this.eventBanner =
-      this.settings.language === 'en'
+    const isSurvival = this.mode === 'act3_survival';
+    this.eventBanner = isSurvival
+      ? getUiText(this.settings.language).descAct3Survival
+      : this.settings.language === 'en'
         ? 'ACT 3: Day 1m / Night 1m! Keep Campfire lit so Giant Sasha stays away, crush metal [E]!'
         : 'АКТ 3: День 1 мин / Ночь 1 мин! Не дай костру потухнуть, иначе выйдет Большой Саня!';
     this.eventBannerTimer = 5.5;
+    this.pushHud(true);
+  }
+
+  private checkAct3SurvivalAchievements(): void {
+    if (this.mode !== 'act3_survival') return;
+    const newly: AchievementId[] = [];
+    if (this.act3Night >= 40) {
+      newly.push(...unlockSingleAchievement(this.achievements, 'act3_40_days'));
+    }
+    if (this.act3Night >= 99) {
+      newly.push(...unlockSingleAchievement(this.achievements, 'act3_99_days'));
+    }
+    if (newly.length > 0) {
+      this.emitAchievementResult(newly);
+    }
+  }
+
+  public submitAct3Riddle(answer: string): void {
+    this.audio.unlock();
+    const ui = getUiText(this.settings.language);
+    if (answer.trim() === '28') {
+      this.act3RiddleSolved = true;
+      this.act3RiddleModalOpen = false;
+      const unlocked = unlockSingleAchievement(this.achievements, 'secret_malinka');
+      this.emitAchievementResult(unlocked);
+      this.audio.playPickup(true);
+      this.emitParticles(ACT3_RIDDLE_POS.x, 1.8, ACT3_RIDDLE_POS.z, 'gold');
+      this.eventBanner = ui.act3RiddleSolved;
+      this.eventBannerTimer = 4.0;
+      this.clock.getDelta();
+      this.pushHud(true);
+    } else {
+      this.audio.playBrickReturn();
+      this.eventBanner = ui.act3RiddleWrong;
+      this.eventBannerTimer = 2.8;
+      this.pushHud(true);
+    }
+  }
+
+  public closeAct3Riddle(): void {
+    this.act3RiddleModalOpen = false;
+    this.clock.getDelta();
     this.pushHud(true);
   }
 
@@ -5654,9 +6071,32 @@ export class ForestGameEngine {
   }
 
   public interactAct3Park(): void {
-    if (this.phase !== 'playing' || this.mode !== 'story_act3') return;
+    if (
+      this.phase !== 'playing' ||
+      (this.mode !== 'story_act3' && this.mode !== 'act3_survival')
+    )
+      return;
     if (this.act3HasSniper) {
       this.fireSniperShot();
+      return;
+    }
+
+    if (this.act3NearStation === 'riddle') {
+      const ui = getUiText(this.settings.language);
+      if (this.act3RiddleSolved) {
+        this.eventBanner = ui.act3RiddleSolved;
+        this.eventBannerTimer = 2.6;
+        this.pushHud(true);
+        return;
+      }
+      this.act3RiddleModalOpen = true;
+      this.heldKeys.clear();
+      this.virtualMoveX = 0;
+      this.virtualMoveZ = 0;
+      if (document.pointerLockElement === this.renderer.domElement) {
+        document.exitPointerLock?.();
+      }
+      this.pushHud(true);
       return;
     }
 
@@ -5789,12 +6229,16 @@ export class ForestGameEngine {
         this.pushHud(true);
         return;
       }
-      if (this.act3Night < ACT3_MAX_NIGHTS) {
+      const isSurvival = this.mode === 'act3_survival';
+      const nextMilestone = isSurvival
+        ? (Math.floor(this.act3Night / ACT3_MAX_NIGHTS) + 1) * ACT3_MAX_NIGHTS
+        : ACT3_MAX_NIGHTS;
+      if (!this.act3HasSniper && this.act3Night < nextMilestone) {
         const skipDays =
           this.act3BaseLevel >= 6 ? 3 : this.act3BaseLevel === 5 ? 2 : 1;
         const actualSkip = Math.max(
           1,
-          Math.min(skipDays, ACT3_MAX_NIGHTS - this.act3Night)
+          Math.min(skipDays, nextMilestone - this.act3Night)
         );
         this.audio.playBedSleep();
         this.emitParticles(ACT3_BED_POS.x, 1.3, ACT3_BED_POS.z, 'gold');
@@ -5816,9 +6260,10 @@ export class ForestGameEngine {
           isGold: true,
         });
 
-        this.act3Night = Math.min(ACT3_MAX_NIGHTS, this.act3Night + actualSkip);
+        this.act3Night = Math.min(nextMilestone, this.act3Night + actualSkip);
         this.act3DayClock = 0;
         this.act3BedCooldownNights = 1;
+        this.checkAct3SurvivalAchievements();
 
         for (let i = 0; i < this.act3NightRonerStates.length; i++) {
           const rc = this.act3RonerArmy[i];
@@ -5832,7 +6277,7 @@ export class ForestGameEngine {
           st.retreatTimer = 0;
         }
 
-        if (this.act3Night === ACT3_MAX_NIGHTS) {
+        if (this.act3Night % ACT3_MAX_NIGHTS === 0) {
           this.triggerAct3Night30Climax();
         } else {
           const sasha = this.chasers[1];
@@ -5845,9 +6290,10 @@ export class ForestGameEngine {
               sasha.retreatTimer = 0;
             }
           }
+          const nightTargetSuffix = isSurvival ? '' : '/30';
           this.eventBanner = isEn
-            ? `Slept in Bed! Skipped ${actualSkip} ${actualSkip === 1 ? 'night' : 'days'} → Day ${this.act3Night}/30 (Bed CD: 1 night).`
-            : `Поспали в кровати! Пропущено ${actualSkip} ${actualSkip === 1 ? 'ночь' : 'дня'} → День ${this.act3Night}/30 (КД кровати: 1 ночь).`;
+            ? `Slept in Bed! Skipped ${actualSkip} ${actualSkip === 1 ? 'night' : 'days'} → Day ${this.act3Night}${nightTargetSuffix} (Bed CD: 1 night).`
+            : `Поспали в кровати! Пропущено ${actualSkip} ${actualSkip === 1 ? 'ночь' : 'дня'} → День ${this.act3Night}${nightTargetSuffix} (КД кровати: 1 ночь).`;
           this.eventBannerTimer = 4.2;
         }
         this.pushHud(true);
@@ -6029,21 +6475,32 @@ export class ForestGameEngine {
       this.cameraShake = THREE.MathUtils.damp(this.cameraShake, 0, 9, dt);
     }
 
-    // 30-Night Cycle progression (Day = 1 min, Night = 1 min; Night 30 stays until Boss + RONER wave defeated)
-    const prevIsNight =
-      this.act3Night >= ACT3_MAX_NIGHTS || this.act3DayClock >= ACT3_DAY_DURATION;
-    if (this.act3Night < ACT3_MAX_NIGHTS) {
+    this.updateAutoAim(dt);
+
+    // 30-Night Cycle progression (or Endless Survival past Night 30 with boss waves every 30th night)
+    const isSurvival = this.mode === 'act3_survival';
+    const isBossClimax =
+      this.act3HasSniper || (!isSurvival && this.act3Night >= ACT3_MAX_NIGHTS);
+    const prevIsNight = isBossClimax || this.act3DayClock >= ACT3_DAY_DURATION;
+    if (!isBossClimax) {
       this.act3DayClock += dt;
       if (this.act3DayClock >= ACT3_CYCLE_SECONDS) {
         this.act3DayClock -= ACT3_CYCLE_SECONDS;
         this.act3Night += 1;
         this.act3BedCooldownNights = Math.max(0, this.act3BedCooldownNights - 1);
-        if (this.act3Night === ACT3_MAX_NIGHTS) {
+        this.checkAct3SurvivalAchievements();
+        if (this.act3Night % ACT3_MAX_NIGHTS === 0) {
           this.triggerAct3Night30Climax();
         } else {
           this.floatingTexts.push({
             id: this.nextFloatId++,
-            text: isEn ? `DAY ${this.act3Night}/30` : `ДЕНЬ ${this.act3Night}/30`,
+            text: isSurvival
+              ? isEn
+                ? `DAY ${this.act3Night}`
+                : `ДЕНЬ ${this.act3Night}`
+              : isEn
+                ? `DAY ${this.act3Night}/30`
+                : `ДЕНЬ ${this.act3Night}/30`,
             worldX: this.playerX,
             worldY: 2.6,
             worldZ: this.playerZ - 2.5,
@@ -6056,12 +6513,20 @@ export class ForestGameEngine {
     }
 
     const isNight =
-      this.act3Night >= ACT3_MAX_NIGHTS || this.act3DayClock >= ACT3_DAY_DURATION;
-    if (!prevIsNight && isNight && this.act3Night < ACT3_MAX_NIGHTS) {
+      this.act3HasSniper ||
+      (!isSurvival && this.act3Night >= ACT3_MAX_NIGHTS) ||
+      this.act3DayClock >= ACT3_DAY_DURATION;
+    if (!prevIsNight && isNight && !this.act3HasSniper) {
       this.audio.playNightHorn();
       this.floatingTexts.push({
         id: this.nextFloatId++,
-        text: isEn ? `NIGHT ${this.act3Night}/30` : `НОЧЬ ${this.act3Night}/30`,
+        text: isSurvival
+          ? isEn
+            ? `NIGHT ${this.act3Night}`
+            : `НОЧЬ ${this.act3Night}`
+          : isEn
+            ? `NIGHT ${this.act3Night}/30`
+            : `НОЧЬ ${this.act3Night}/30`,
         worldX: this.playerX,
         worldY: 2.6,
         worldZ: this.playerZ - 2.5,
@@ -6081,7 +6546,7 @@ export class ForestGameEngine {
           : 'НАСТУПИЛА НОЧЬ! RONER идут сзади, справа и слева — отгоняй фонариком [F]!';
         this.eventBannerTimer = 4.8;
       }
-    } else if (prevIsNight && !isNight && this.act3Night < ACT3_MAX_NIGHTS) {
+    } else if (prevIsNight && !isNight && !this.act3HasSniper) {
       for (let i = 0; i < this.act3NightRonerStates.length; i++) {
         const rc = this.act3RonerArmy[i];
         const st = this.act3NightRonerStates[i];
@@ -6097,20 +6562,14 @@ export class ForestGameEngine {
     }
 
     // Atmosphere shifts smoothly between dusk/day and tense crimson/dark Night
-    if (this.act3Night >= ACT3_MAX_NIGHTS) {
-      this.scene.background = new THREE.Color(0x190910);
-      this.fog.color.setHex(0x190910);
-      this.fog.density = 0.015;
+    if (this.act3HasSniper || (!isSurvival && this.act3Night >= ACT3_MAX_NIGHTS)) {
+      this.applyAtmosphereSettings(0x190910, 0.015);
       this.moonLight.intensity = 0.58;
     } else if (isNight) {
-      this.scene.background = new THREE.Color(0x070d16);
-      this.fog.color.setHex(0x070d16);
-      this.fog.density = 0.019;
+      this.applyAtmosphereSettings(0x070d16, 0.019);
       this.moonLight.intensity = 0.34;
     } else {
-      this.scene.background = new THREE.Color(0x162235);
-      this.fog.color.setHex(0x162235);
-      this.fog.density = 0.011;
+      this.applyAtmosphereSettings(0x162235, 0.011);
       this.moonLight.intensity = 0.85;
     }
 
@@ -6313,6 +6772,10 @@ export class ForestGameEngine {
         this.playerX - ACT3_BED_POS.x,
         this.playerZ - ACT3_BED_POS.z
       );
+      const distRiddle = Math.hypot(
+        this.playerX - ACT3_RIDDLE_POS.x,
+        this.playerZ - ACT3_RIDDLE_POS.z
+      );
 
       if (distFire < 3.4) {
         this.act3NearStation = 'campfire';
@@ -6372,6 +6835,10 @@ export class ForestGameEngine {
             : isEn
               ? `[E / Click] Sleep in Bed (${skipLabel})`
               : `[E / ЛКМ] Поспать в кровати (${skipLabel})`;
+      } else if (distRiddle < 3.4) {
+        this.act3NearStation = 'riddle';
+        const ui = getUiText(this.settings.language);
+        prompt = `[E / ${isEn ? 'Click' : 'ЛКМ'}] P+P=? (${ui.act3RiddleTitle})`;
       } else if (distMap < 2.8) {
         this.act3NearStation = 'map';
         prompt = isEn ? '[E / Click] Read Park Map' : '[E / ЛКМ] Посмотреть карту парка';
@@ -6385,7 +6852,7 @@ export class ForestGameEngine {
 
     // Giant Sasha (2x scale!) ONLY spawns when campfire goes out (Nights 1..29), or on Night 30 Boss fight
     const sasha = this.chasers[1];
-    if (this.act3Night < ACT3_MAX_NIGHTS) {
+    if (!this.act3HasSniper) {
       if (this.act3FireFuel <= 0) {
         if (!sasha.active) {
           const spawnAng = Math.atan2(this.playerZ, this.playerX) + Math.PI;
@@ -6416,7 +6883,7 @@ export class ForestGameEngine {
       }
     }
 
-    if (sasha.active && (this.act3Night < ACT3_MAX_NIGHTS || this.act3BossHp > 0)) {
+    if (sasha.active && (!this.act3HasSniper || this.act3BossHp > 0)) {
       if (sasha.bubbleTimer > 0) {
         sasha.bubbleTimer -= dt;
         if (sasha.bubbleTimer <= 0) sasha.currentBubbleText = null;
@@ -6428,14 +6895,14 @@ export class ForestGameEngine {
       const distToCamp = Math.hypot(sasha.x, sasha.z);
 
       let speed =
-        this.act3Night >= ACT3_MAX_NIGHTS
+        (this.act3HasSniper
           ? 5.6
           : isNight
             ? 5.3 + Math.min(1.8, this.act3Night * 0.05)
-            : 4.3;
+            : 4.3) * this.getEnemySpeedMultiplier();
 
       // Level 3 Barbed Wire + Floodlight slows him near perimeter
-      if (this.act3BaseLevel >= 3 && distToCamp < 10.5 && this.act3Night < ACT3_MAX_NIGHTS) {
+      if (this.act3BaseLevel >= 3 && distToCamp < 10.5 && !this.act3HasSniper) {
         speed *= 0.52;
       }
 
@@ -6465,7 +6932,7 @@ export class ForestGameEngine {
         sasha.x,
         sasha.z,
         0.95,
-        this.act3Night < ACT3_MAX_NIGHTS
+        !this.act3HasSniper
       );
       sasha.x = res.x;
       sasha.z = res.z;
@@ -6502,7 +6969,7 @@ export class ForestGameEngine {
     }
 
     // Nights 1..29: Nocturnal RONER flankers coming from behind, right, and left (afraid of flashlight!)
-    if (this.act3Night < ACT3_MAX_NIGHTS && isNight) {
+    if (!this.act3HasSniper && isNight) {
       for (let i = 0; i < this.act3NightRonerStates.length; i++) {
         const rc = this.act3RonerArmy[i];
         const st = this.act3NightRonerStates[i];
@@ -6549,7 +7016,7 @@ export class ForestGameEngine {
 
         let moveX = dx / dist;
         let moveZ = dz / dist;
-        let speed = rc.speed;
+        let speed = rc.speed * this.getEnemySpeedMultiplier();
         let facingOverride: number | null = null;
 
         // Level 3 barbed wire & floodlight slows them down near base
@@ -6622,8 +7089,9 @@ export class ForestGameEngine {
     }
 
     // Night 30 RONER Army Wave
-    if (this.act3Night >= ACT3_MAX_NIGHTS) {
+    if (this.act3HasSniper) {
       let aliveRoner = 0;
+      const armySpdMult = this.getEnemySpeedMultiplier();
       for (const rc of this.act3RonerArmy) {
         if (!rc.active) continue;
         if (rc.bubbleTimer > 0) {
@@ -6643,8 +7111,8 @@ export class ForestGameEngine {
         const dx = this.playerX - rc.x;
         const dz = this.playerZ - rc.z;
         const dist = Math.hypot(dx, dz) || 1;
-        rc.x += (dx / dist) * rc.speed * dt;
-        rc.z += (dz / dist) * rc.speed * dt;
+        rc.x += (dx / dist) * rc.speed * armySpdMult * dt;
+        rc.z += (dz / dist) * rc.speed * armySpdMult * dt;
         const res = this.resolveAct3Collision(rc.x, rc.z, 0.5, false);
         rc.x = res.x;
         rc.z = res.z;
@@ -6669,7 +7137,26 @@ export class ForestGameEngine {
       }
 
       if (this.act3BossHp <= 0 && aliveRoner === 0) {
-        this.startAct3OutroCutscene();
+        if (isSurvival) {
+          this.act3HasSniper = false;
+          this.act3BossHp = 0;
+          this.fpSniper.group.visible = false;
+          this.fpFlashlight.group.visible = true;
+          this.act3Night += 1;
+          this.act3DayClock = 0;
+          this.act3FireFuel = 100;
+          this.act3Hp = this.act3MaxHp;
+          this.checkAct3SurvivalAchievements();
+          this.audio.playVictoryFanfare();
+          this.emitParticles(this.playerX, 2.0, this.playerZ, 'gold');
+          this.eventBanner = isEn
+            ? `NIGHT ${this.act3Night - 1} CLEARED! Endless Survival continues → Day ${this.act3Night}!`
+            : `НОЧЬ ${this.act3Night - 1} ПРОЙДЕНА! Выжывачь продолжается → День ${this.act3Night}!`;
+          this.eventBannerTimer = 5.0;
+          this.pushHud(true);
+        } else {
+          this.startAct3OutroCutscene();
+        }
       }
     }
   }
@@ -6729,9 +7216,7 @@ export class ForestGameEngine {
       this.act3ParkObjs.explosionLight.intensity = 0;
     }
 
-    this.scene.background = new THREE.Color(0x0d1522);
-    this.fog.color.setHex(0x0d1522);
-    this.fog.density = 0.012;
+    this.applyAtmosphereSettings(0x0d1522, 0.012);
     this.moonLight.intensity = 0.6;
     this.pushHud(true);
   }
@@ -6879,7 +7364,10 @@ export class ForestGameEngine {
     }
 
     const unlocked = unlockSingleAchievement(this.achievements, 'act3_malinka');
-    this.emitAchievementResult(unlocked);
+    const hcUnlocked = this.settings.hardcoreMode
+      ? recordHardcoreActClear(this.achievements, 'story_act3')
+      : [];
+    this.emitAchievementResult([...unlocked, ...hcUnlocked]);
 
     this.audio.playVictoryFanfare();
     this.pushHud(true);
@@ -6953,7 +7441,7 @@ export class ForestGameEngine {
     this.act4UziSecretTriggered = false;
     this.isPrimaryFireHeld = false;
     this.flashlightOn = true;
-    this.fog.density = 0.011;
+    this.applyAtmosphereSettings(0x151128, 0.011);
 
     this.playerX = 0;
     this.playerZ = 14.0;
@@ -7156,7 +7644,7 @@ export class ForestGameEngine {
     this.playerBubbleText = null;
     this.interactPrompt = null;
     this.flashlightOn = true;
-    this.fog.density = 0.011;
+    this.applyAtmosphereSettings(0x151128, 0.011);
 
     this.playerX = 0;
     this.playerZ = ACT4_START_Z;
@@ -7680,6 +8168,7 @@ export class ForestGameEngine {
 
   private updateAct4Playing(dt: number, elapsed: number): void {
     this.elapsedPlaying += dt;
+    this.updateAutoAim(dt);
     const isEn = this.settings.language === 'en';
     if (this.eventBannerTimer > 0) {
       this.eventBannerTimer -= dt;
@@ -8012,8 +8501,9 @@ export class ForestGameEngine {
       const dx = this.playerX - c4.x;
       const dz = this.playerZ - c4.z;
       const dist = Math.hypot(dx, dz) || 1;
-      c4.x += (dx / dist) * c4.speed * dt;
-      c4.z += (dz / dist) * c4.speed * dt;
+      const c4Spd = c4.speed * this.getEnemySpeedMultiplier();
+      c4.x += (dx / dist) * c4Spd * dt;
+      c4.z += (dz / dist) * c4Spd * dt;
       const res = this.resolveAct4VillageCollision(c4.x, c4.z, 0.5);
       c4.x = res.x;
       c4.z = res.z;
@@ -8050,7 +8540,7 @@ export class ForestGameEngine {
       const dx = this.playerX - sasha.x;
       const dz = this.playerZ - sasha.z;
       const dist = Math.hypot(dx, dz) || 1;
-      const bossSpeed = 4.9;
+      const bossSpeed = 4.9 * this.getEnemySpeedMultiplier();
       sasha.x += (dx / dist) * bossSpeed * dt;
       sasha.z += (dz / dist) * bossSpeed * dt;
       const res = this.resolveAct4VillageCollision(sasha.x, sasha.z, 1.3);
@@ -8205,7 +8695,10 @@ export class ForestGameEngine {
     }
 
     const unlocked = unlockSingleAchievement(this.achievements, 'act4_jojo');
-    this.emitAchievementResult(unlocked);
+    const hcUnlocked = this.settings.hardcoreMode
+      ? recordHardcoreActClear(this.achievements, 'story_act4')
+      : [];
+    this.emitAchievementResult([...unlocked, ...hcUnlocked]);
 
     this.audio.playVictoryFanfare();
     this.pushHud(true);
@@ -8260,7 +8753,7 @@ export class ForestGameEngine {
 
   private startSniperMinigame(): void {
     this.phase = 'playing';
-    this.fog.density = 0.016;
+    this.applyAtmosphereSettings(0x080e16, 0.016);
     this.clonesKilled = 0;
     this.sniperWave = 1;
     this.sniperHp = this.sniperMaxHp;
@@ -8319,7 +8812,9 @@ export class ForestGameEngine {
   }
 
   public fireSniperShot(): void {
-    const isAct3Sniper = this.mode === 'story_act3' && this.act3HasSniper;
+    const isAct3Sniper =
+      (this.mode === 'story_act3' || this.mode === 'act3_survival') &&
+      this.act3HasSniper;
     if (this.phase !== 'playing' || (this.mode !== 'sniper_minigame' && !isAct3Sniper)) return;
     if (this.sniperFireCooldown > 0) return;
 
@@ -8454,6 +8949,7 @@ export class ForestGameEngine {
 
   private updateSniperMinigame(dt: number, elapsed: number): void {
     this.elapsedPlaying += dt;
+    this.updateAutoAim(dt);
     if (this.eventBannerTimer > 0) {
       this.eventBannerTimer -= dt;
       if (this.eventBannerTimer <= 0) this.eventBanner = null;
@@ -8581,8 +9077,9 @@ export class ForestGameEngine {
       const dx = this.playerX - sc.x;
       const dz = this.playerZ - sc.z;
       const dist = Math.hypot(dx, dz) || 1;
-      sc.x += (dx / dist) * sc.speed * dt;
-      sc.z += (dz / dist) * sc.speed * dt;
+      const scSpd = sc.speed * this.getEnemySpeedMultiplier();
+      sc.x += (dx / dist) * scSpd * dt;
+      sc.z += (dz / dist) * scSpd * dt;
       const res = this.resolveSniperArenaCollision(sc.x, sc.z, 0.5);
       sc.x = res.x;
       sc.z = res.z;
@@ -8655,6 +9152,801 @@ export class ForestGameEngine {
     this.pushHud(true);
   }
 
+  private updateAutoAim(dt: number): void {
+    if (!this.settings.autoAim || this.phase !== 'playing') return;
+    const isAct3Sniper =
+      (this.mode === 'story_act3' || this.mode === 'act3_survival') && this.act3HasSniper;
+    const isAct4Battle = this.mode === 'story_act4' && this.act4Stage === 'battle';
+    if (this.mode !== 'sniper_minigame' && !isAct3Sniper && !isAct4Battle) return;
+
+    const eyeY = this.playerY + 1.85;
+    let bestTx = 0;
+    let bestTy = 1.65;
+    let bestTz = 0;
+    let bestDist = 48;
+    let found = false;
+
+    if (this.mode === 'sniper_minigame') {
+      for (const sc of this.sniperClones) {
+        if (!sc.active || sc.deadTimer > 0) continue;
+        const d = Math.hypot(sc.x - this.playerX, sc.z - this.playerZ);
+        if (d < bestDist && d > 0.5) {
+          bestDist = d;
+          bestTx = sc.x;
+          bestTy = 1.75;
+          bestTz = sc.z;
+          found = true;
+        }
+      }
+    } else if (isAct3Sniper) {
+      for (const rc of this.act3RonerArmy) {
+        if (!rc.active || rc.deadTimer > 0) continue;
+        const d = Math.hypot(rc.x - this.playerX, rc.z - this.playerZ);
+        if (d < bestDist && d > 0.5) {
+          bestDist = d;
+          bestTx = rc.x;
+          bestTy = 1.75;
+          bestTz = rc.z;
+          found = true;
+        }
+      }
+      const boss = this.chasers[1];
+      if (this.act3BossHp > 0 && boss?.active) {
+        const bd = Math.hypot(boss.x - this.playerX, boss.z - this.playerZ);
+        if (bd < 55 && (!found || bd < bestDist + 4)) {
+          bestDist = bd;
+          bestTx = boss.x;
+          bestTy = 3.2;
+          bestTz = boss.z;
+          found = true;
+        }
+      }
+    } else if (isAct4Battle) {
+      for (const c4 of this.act4Clones) {
+        if (!c4.active || c4.deadTimer > 0) continue;
+        const d = Math.hypot(c4.x - this.playerX, c4.z - this.playerZ);
+        if (d < bestDist && d > 0.5) {
+          bestDist = d;
+          bestTx = c4.x;
+          bestTy = 1.7;
+          bestTz = c4.z;
+          found = true;
+        }
+      }
+      const boss = this.chasers[1];
+      if (this.act4Wave === 7 && this.act4BossHp > 0 && boss?.active) {
+        const bd = Math.hypot(boss.x - this.playerX, boss.z - this.playerZ);
+        if (bd < 55 && (!found || bd < bestDist + 5)) {
+          bestDist = bd;
+          bestTx = boss.x;
+          bestTy = 4.2;
+          bestTz = boss.z;
+          found = true;
+        }
+      }
+    }
+
+    if (!found) return;
+
+    const dx = bestTx - this.playerX;
+    const dy = bestTy - eyeY;
+    const dz = bestTz - this.playerZ;
+    const horiz = Math.hypot(dx, dz) || 0.001;
+
+    const targetYaw = Math.atan2(-dx, -dz);
+    const targetPitch = THREE.MathUtils.clamp(-Math.atan2(dy, horiz), -0.58, 0.58);
+
+    let yawDiff = targetYaw - this.camYaw;
+    while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+    while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+
+    const maxYawStep = 2.6 * dt;
+    this.camYaw += THREE.MathUtils.clamp(yawDiff, -maxYawStep, maxYawStep);
+
+    const pitchDiff = targetPitch - this.camPitch;
+    const maxPitchStep = 2.0 * dt;
+    this.camPitch = THREE.MathUtils.clamp(
+      this.camPitch + THREE.MathUtils.clamp(pitchDiff, -maxPitchStep, maxPitchStep),
+      -0.65,
+      0.65
+    );
+  }
+
+  private startParkourMinigame(): void {
+    this.phase = 'playing';
+    this.applyAtmosphereSettings(0x0c1428, 0.008);
+    this.cutsceneSubtitle = null;
+    this.playerBubbleText = null;
+    this.interactPrompt = null;
+    this.parkourCheckpoint = 0;
+    this.parkourRidingIdx = null;
+    this.playerX = 0;
+    this.playerZ = 0;
+    this.playerY = 0;
+    this.playerVy = 0;
+    this.isGrounded = true;
+    this.playerYaw = Math.PI;
+    this.camYaw = 0;
+    this.camPitch = 0.28;
+    this.camDist = 7.4;
+
+    this.playerRig.root.visible = true;
+    this.playerRig.root.position.set(0, 0, 0);
+    this.playerRig.root.rotation.y = this.playerYaw;
+    this.playerRig.bodyPivot.rotation.x = 0;
+    this.playerRig.bodyPivot.position.y = 0;
+    this.tpFlashlight.group.visible = false;
+    this.fpFlashlight.group.visible = false;
+    this.sachetHand.group.visible = false;
+    this.fpSniper.group.visible = false;
+    this.act4FpWeapons.group.visible = false;
+
+    for (const c of this.chasers) {
+      c.active = false;
+      c.rig.root.visible = false;
+      c.currentBubbleText = null;
+    }
+
+    if (this.parkourObjs) {
+      for (const b of this.parkourObjs.beacons) {
+        b.mat.color.setHex(b.idx === 0 ? 0x22c55e : 0xfbbf24);
+        b.mat.emissive.setHex(b.idx === 0 ? 0x16a34a : 0xd97706);
+      }
+      for (const p of this.parkourObjs.platforms) {
+        if (p.isMoving) {
+          p.x = p.baseX ?? p.x;
+          p.z = p.baseZ ?? p.z;
+          p.dx = 0;
+          p.dz = 0;
+          p.mesh.position.set(p.x, p.topY - p.thickness * 0.5, p.z);
+        }
+      }
+    }
+
+    const ui = getUiText(this.settings.language);
+    this.eventBanner = ui.descParkour;
+    this.eventBannerTimer = 5.0;
+    this.pushHud(true);
+    this.callbacks.onBubblesUpdate([]);
+  }
+
+  private updateParkourMinigame(dt: number, elapsed: number): void {
+    this.elapsedPlaying += dt;
+    if (this.eventBannerTimer > 0) {
+      this.eventBannerTimer -= dt;
+      if (this.eventBannerTimer <= 0) this.eventBanner = null;
+    }
+
+    if (this.parkourObjs) {
+      this.parkourObjs.goalTrophy.rotation.y += dt * 1.9;
+      this.parkourObjs.goalTrophy.position.y = 24.1 + Math.sin(elapsed * 2.6) * 0.28;
+
+      for (const p of this.parkourObjs.platforms) {
+        if (!p.isMoving) continue;
+        const prevX = p.x;
+        const prevZ = p.z;
+        const offset =
+          Math.sin(elapsed * (p.moveSpeed ?? 1.6) + (p.phase ?? 0)) * (p.moveAmp ?? 3.5);
+        if (p.moveAxis === 'z') {
+          p.z = (p.baseZ ?? p.z) + offset;
+        } else {
+          p.x = (p.baseX ?? p.x) + offset;
+        }
+        p.dx = p.x - prevX;
+        p.dz = p.z - prevZ;
+        p.mesh.position.set(p.x, p.topY - p.thickness * 0.5, p.z);
+      }
+
+      if (this.isGrounded && this.parkourRidingIdx !== null) {
+        const plat = this.parkourObjs.platforms[this.parkourRidingIdx];
+        if (plat && plat.isMoving) {
+          this.playerX += plat.dx ?? 0;
+          this.playerZ += plat.dz ?? 0;
+        }
+      }
+    }
+
+    let inX = this.virtualMoveX;
+    let inZ = this.virtualMoveZ;
+    if (this.heldKeys.has('KeyW') || this.heldKeys.has('ArrowUp')) inZ -= 1;
+    if (this.heldKeys.has('KeyS') || this.heldKeys.has('ArrowDown')) inZ += 1;
+    if (this.heldKeys.has('KeyA') || this.heldKeys.has('ArrowLeft')) inX -= 1;
+    if (this.heldKeys.has('KeyD') || this.heldKeys.has('ArrowRight')) inX += 1;
+    if (this.heldKeys.has('KeyQ')) this.camYaw += dt * 2.2;
+    if (this.heldKeys.has('KeyE')) this.camYaw -= dt * 2.2;
+
+    const inputLen = Math.hypot(inX, inZ);
+    const hasMove = inputLen > 0.05;
+    if (hasMove) {
+      inX /= Math.max(1, inputLen);
+      inZ /= Math.max(1, inputLen);
+    }
+
+    const wantsSprint =
+      (this.heldKeys.has('ShiftLeft') ||
+        this.heldKeys.has('ShiftRight') ||
+        this.virtualSprint) &&
+      hasMove;
+    const isSprinting = wantsSprint && this.stamina > 2;
+    if (isSprinting) {
+      this.stamina = Math.max(0, this.stamina - dt * 16);
+    } else {
+      this.stamina = Math.min(100, this.stamina + dt * (hasMove ? 20 : 30));
+    }
+
+    const moveSpeed = isSprinting ? 11.4 : 7.8;
+    if (hasMove) {
+      const sinY = Math.sin(this.camYaw);
+      const cosY = Math.cos(this.camYaw);
+      const worldDx = inX * cosY + inZ * sinY;
+      const worldDz = -inX * sinY + inZ * cosY;
+      this.playerX += worldDx * moveSpeed * dt;
+      this.playerZ += worldDz * moveSpeed * dt;
+
+      const targetYaw = Math.atan2(worldDx, worldDz);
+      let diff = targetYaw - this.playerYaw;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      this.playerYaw += diff * Math.min(1, dt * 15);
+
+      if (this.isGrounded) {
+        this.footstepAccum += dt * (isSprinting ? 2.8 : 2.0);
+        if (this.footstepAccum >= 1) {
+          this.footstepAccum = 0;
+          this.audio.playFootstep(isSprinting);
+        }
+      }
+    }
+
+    if (this.isGrounded) this.coyoteTimer = 0.14;
+    else this.coyoteTimer = Math.max(0, this.coyoteTimer - dt);
+    if (this.jumpBufferTimer > 0) this.jumpBufferTimer = Math.max(0, this.jumpBufferTimer - dt);
+    if (this.jumpBufferTimer > 0 && this.coyoteTimer > 0) {
+      this.playerVy = 9.4;
+      this.isGrounded = false;
+      this.parkourRidingIdx = null;
+      this.coyoteTimer = 0;
+      this.jumpBufferTimer = 0;
+      this.audio.playJump();
+    }
+
+    const prevY = this.playerY;
+    this.playerVy -= 23.0 * dt;
+    let nextY = prevY + this.playerVy * dt;
+    let landedIdx: number | null = null;
+
+    if (this.parkourObjs) {
+      for (let i = 0; i < this.parkourObjs.platforms.length; i++) {
+        const p = this.parkourObjs.platforms[i];
+        const overX = Math.abs(this.playerX - p.x) <= p.w * 0.5 + 0.34;
+        const overZ = Math.abs(this.playerZ - p.z) <= p.d * 0.5 + 0.34;
+        if (overX && overZ && this.playerVy <= 0 && prevY >= p.topY - 0.55 && nextY <= p.topY + 0.16) {
+          nextY = p.topY;
+          landedIdx = i;
+          break;
+        }
+      }
+
+      if (landedIdx !== null) {
+        const plat = this.parkourObjs.platforms[landedIdx];
+        this.playerY = plat.topY;
+        this.playerVy = 0;
+        this.isGrounded = true;
+        this.parkourRidingIdx = landedIdx;
+
+        if (plat.isBounce) {
+          this.playerVy = 15.8;
+          this.isGrounded = false;
+          this.parkourRidingIdx = null;
+          this.audio.playJump();
+          this.emitParticles(this.playerX, this.playerY + 0.3, this.playerZ, 'green');
+        } else if (
+          plat.checkpointIdx !== undefined &&
+          plat.checkpointIdx > this.parkourCheckpoint
+        ) {
+          this.parkourCheckpoint = plat.checkpointIdx;
+          const beacon = this.parkourObjs.beacons.find((b) => b.idx === plat.checkpointIdx);
+          if (beacon) {
+            beacon.mat.color.setHex(0x22c55e);
+            beacon.mat.emissive.setHex(0x16a34a);
+          }
+          this.audio.playPickup(true);
+          this.emitParticles(plat.x, plat.topY + 0.6, plat.z, 'gold');
+          this.floatingTexts.push({
+            id: this.nextFloatId++,
+            text: `CHECKPOINT #${plat.checkpointIdx}`,
+            worldX: plat.x,
+            worldY: plat.topY + 1.8,
+            worldZ: plat.z,
+            life: 1.4,
+            maxLife: 1.4,
+            isGold: true,
+          });
+          this.pushHud(true);
+        } else if (plat.isGoal) {
+          this.finishParkourVictory();
+          return;
+        }
+      } else {
+        this.playerY = nextY;
+        this.isGrounded = false;
+        this.parkourRidingIdx = null;
+      }
+
+      const cp =
+        this.parkourObjs.checkpoints.find((c) => c.idx === this.parkourCheckpoint) ??
+        this.parkourObjs.checkpoints[0];
+      if (this.playerY < -6 || this.playerY < cp.y - 11) {
+        this.playerX = cp.x;
+        this.playerY = cp.y + 0.2;
+        this.playerZ = cp.z;
+        this.playerVy = 0;
+        this.isGrounded = true;
+        this.parkourRidingIdx = null;
+        this.audio.playBrickReturn();
+        this.floatingTexts.push({
+          id: this.nextFloatId++,
+          text: 'RESPAWN!',
+          worldX: cp.x,
+          worldY: cp.y + 1.8,
+          worldZ: cp.z,
+          life: 1.0,
+          maxLife: 1.0,
+          isGold: false,
+        });
+      }
+    }
+
+    this.playerRig.root.position.set(this.playerX, this.playerY, this.playerZ);
+    this.playerRig.root.rotation.y = this.playerYaw;
+    animateRobloxCharacter(
+      this.playerRig,
+      hasMove ? (isSprinting ? 1.35 : 0.9) : 0,
+      dt,
+      elapsed,
+      !this.isGrounded,
+      false,
+      false
+    );
+  }
+
+  private finishParkourVictory(): void {
+    this.phase = 'victory';
+    this.cutsceneSubtitle = null;
+    this.playerBubbleText = null;
+    const unlocked = unlockSingleAchievement(this.achievements, 'parkour_clear');
+    this.emitAchievementResult(unlocked);
+    this.audio.playVictoryFanfare();
+    this.pushHud(true);
+  }
+
+  private startPvzMinigame(): void {
+    this.phase = 'playing';
+    this.applyAtmosphereSettings(0x0f1f18, 0.01);
+    this.cutsceneSubtitle = null;
+    this.playerBubbleText = null;
+    this.interactPrompt = null;
+    this.clearPvzDynamicEntities();
+    this.pvzEnergy = 150;
+    this.pvzWave = 1;
+    this.pvzWaveToSpawn = PVZ_WAVE_COUNTS[0];
+    this.pvzWaveSpawnTimer = 2.0;
+    this.pvzWavePauseTimer = 0;
+    this.pvzSelectedPlant = 'peashooter';
+    this.pvzHoveredRow = 2;
+    this.pvzHoveredCol = 2;
+
+    this.playerX = -9.0;
+    this.playerZ = 0;
+    this.playerY = 0;
+    this.playerVy = 0;
+    this.isGrounded = true;
+    this.playerYaw = Math.PI / 2;
+    this.playerRig.root.visible = true;
+    this.playerRig.root.position.set(this.playerX, 0, this.playerZ);
+    this.playerRig.root.rotation.y = this.playerYaw;
+    this.playerRig.bodyPivot.rotation.x = 0;
+    this.playerRig.bodyPivot.position.y = 0;
+    this.tpFlashlight.group.visible = false;
+    this.fpFlashlight.group.visible = false;
+    this.sachetHand.group.visible = false;
+    this.fpSniper.group.visible = false;
+    this.act4FpWeapons.group.visible = false;
+
+    for (const c of this.chasers) {
+      c.active = false;
+      c.rig.root.visible = false;
+      c.currentBubbleText = null;
+    }
+    for (const c4 of this.act4Clones) {
+      c4.active = false;
+      c4.rig.root.visible = false;
+      c4.currentBubbleText = null;
+      c4.deadTimer = 0;
+    }
+
+    const ui = getUiText(this.settings.language);
+    this.eventBanner = ui.descPvz;
+    this.eventBannerTimer = 5.0;
+    this.pushHud(true);
+    this.callbacks.onBubblesUpdate([]);
+  }
+
+  public selectPvzPlant(kind: PvzPlantType): void {
+    this.pvzSelectedPlant = kind;
+    this.pushHud(true);
+  }
+
+  public interactPvz(overrideRow?: number, overrideCol?: number): void {
+    if (this.phase !== 'playing' || this.mode !== 'plants_vs_roners') return;
+    this.audio.unlock();
+
+    let row = overrideRow ?? this.pvzHoveredRow;
+    let col = overrideCol ?? this.pvzHoveredCol;
+    if (row === null || col === null) {
+      let bestD = 3.0;
+      if (this.pvzArenaObjs) {
+        for (const tile of this.pvzArenaObjs.tiles) {
+          const d = Math.hypot(tile.x - this.playerX, tile.z - this.playerZ);
+          if (d < bestD) {
+            bestD = d;
+            row = tile.row;
+            col = tile.col;
+          }
+        }
+      }
+    }
+    if (row === null || col === null) return;
+
+    const existingIdx = this.pvzPlants.findIndex((p) => p.row === row && p.col === col);
+    if (this.pvzSelectedPlant === 'shovel') {
+      if (existingIdx >= 0) {
+        const removed = this.pvzPlants[existingIdx];
+        const refund = Math.floor(PVZ_COSTS[removed.kind] * 0.5);
+        this.pvzEnergy += refund;
+        this.scene.remove(removed.rig.group);
+        this.disposeObjectResources(removed.rig.group);
+        this.pvzPlants.splice(existingIdx, 1);
+        this.audio.playBrickReturn();
+        const pos = pvzTileWorldPos(row, col);
+        this.floatingTexts.push({
+          id: this.nextFloatId++,
+          text: `+${refund} ☀`,
+          worldX: pos.x,
+          worldY: 1.5,
+          worldZ: pos.z,
+          life: 0.9,
+          maxLife: 0.9,
+          isGold: true,
+        });
+        this.pushHud(true);
+      }
+      return;
+    }
+
+    if (existingIdx >= 0) return;
+
+    const cost = PVZ_COSTS[this.pvzSelectedPlant];
+    if (this.pvzEnergy < cost) {
+      this.audio.playBrickReturn();
+      return;
+    }
+
+    this.pvzEnergy -= cost;
+    const rig = createPvzPlantRig(this.pvzSelectedPlant);
+    const pos = pvzTileWorldPos(row, col);
+    rig.group.position.set(pos.x, 0, pos.z);
+    this.scene.add(rig.group);
+
+    const maxHp = this.pvzSelectedPlant === 'wallnut' ? 420 : 120;
+    this.pvzPlants.push({
+      row,
+      col,
+      kind: this.pvzSelectedPlant,
+      hp: maxHp,
+      maxHp,
+      cooldown: this.pvzSelectedPlant === 'sun' ? 4.2 : 0.45,
+      rig,
+    });
+    this.audio.playBoxPickup();
+    this.emitParticles(pos.x, 0.8, pos.z, this.pvzSelectedPlant === 'sun' ? 'gold' : 'green');
+    this.pushHud(true);
+  }
+
+  private updatePvzMinigame(dt: number, elapsed: number): void {
+    this.elapsedPlaying += dt;
+    if (this.eventBannerTimer > 0) {
+      this.eventBannerTimer -= dt;
+      if (this.eventBannerTimer <= 0) this.eventBanner = null;
+    }
+
+    // Passive Sun trickle
+    this.pvzEnergy += dt * 4.5;
+
+    // Player movement on the lawn (for WASD + E play)
+    let inX = this.virtualMoveX;
+    let inZ = this.virtualMoveZ;
+    if (this.heldKeys.has('KeyW') || this.heldKeys.has('ArrowUp')) inZ -= 1;
+    if (this.heldKeys.has('KeyS') || this.heldKeys.has('ArrowDown')) inZ += 1;
+    if (this.heldKeys.has('KeyA') || this.heldKeys.has('ArrowLeft')) inX -= 1;
+    if (this.heldKeys.has('KeyD') || this.heldKeys.has('ArrowRight')) inX += 1;
+
+    const inputLen = Math.hypot(inX, inZ);
+    const hasMove = inputLen > 0.05;
+    if (hasMove) {
+      inX /= Math.max(1, inputLen);
+      inZ /= Math.max(1, inputLen);
+      this.playerX = THREE.MathUtils.clamp(this.playerX + inX * 9.2 * dt, -13.2, 13.5);
+      this.playerZ = THREE.MathUtils.clamp(this.playerZ + inZ * 9.2 * dt, -8.5, 8.5);
+      const targetYaw = Math.atan2(inX, inZ);
+      let diff = targetYaw - this.playerYaw;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      this.playerYaw += diff * Math.min(1, dt * 15);
+    }
+
+    this.playerRig.root.position.set(this.playerX, 0, this.playerZ);
+    this.playerRig.root.rotation.y = this.playerYaw;
+    animateRobloxCharacter(
+      this.playerRig,
+      hasMove ? 0.95 : 0,
+      dt,
+      elapsed,
+      false,
+      false,
+      false
+    );
+
+    if (this.pvzArenaObjs) {
+      // Snap hovered tile to player position if moving via keyboard/touch
+      if (hasMove || this.pvzHoveredRow === null || this.pvzHoveredCol === null) {
+        let bestD = 3.2;
+        let foundRow: number | null = null;
+        let foundCol: number | null = null;
+        for (const tile of this.pvzArenaObjs.tiles) {
+          const d = Math.hypot(tile.x - this.playerX, tile.z - this.playerZ);
+          if (d < bestD) {
+            bestD = d;
+            foundRow = tile.row;
+            foundCol = tile.col;
+          }
+        }
+        if (foundRow !== null && foundCol !== null) {
+          this.pvzHoveredRow = foundRow;
+          this.pvzHoveredCol = foundCol;
+        }
+      }
+      if (this.pvzHoveredRow !== null && this.pvzHoveredCol !== null) {
+        const pos = pvzTileWorldPos(this.pvzHoveredRow, this.pvzHoveredCol);
+        this.pvzArenaObjs.hoverRing.position.set(pos.x, 0.09, pos.z);
+        this.pvzArenaObjs.hoverRing.visible = true;
+        this.pvzArenaObjs.hoverRingMat.color.setHex(
+          this.pvzSelectedPlant === 'shovel' ? 0xf43f5e : 0xfacc15
+        );
+      } else {
+        this.pvzArenaObjs.hoverRing.visible = false;
+      }
+    }
+
+    // Update plants
+    for (const p of this.pvzPlants) {
+      const pos = pvzTileWorldPos(p.row, p.col);
+      p.cooldown -= dt;
+      if (p.kind === 'sun') {
+        p.rig.headPivot.rotation.x = elapsed * 1.6;
+        if (p.cooldown <= 0) {
+          p.cooldown = 5.0;
+          this.pvzEnergy += 25;
+          this.emitParticles(pos.x, 1.3, pos.z, 'gold');
+          this.floatingTexts.push({
+            id: this.nextFloatId++,
+            text: '+25 ☀',
+            worldX: pos.x,
+            worldY: 1.7,
+            worldZ: pos.z,
+            life: 0.9,
+            maxLife: 0.9,
+            isGold: true,
+          });
+        }
+      } else if (p.kind === 'peashooter' || p.kind === 'repeater') {
+        p.rig.headPivot.rotation.y = Math.sin(elapsed * 3.0 + p.row) * 0.08;
+        let hasTargetInLane = false;
+        for (let idx = 0; idx < this.act4Clones.length; idx++) {
+          const c4 = this.act4Clones[idx];
+          if (
+            c4.active &&
+            c4.deadTimer <= 0 &&
+            this.pvzCloneRows[idx] === p.row &&
+            c4.x >= pos.x - 0.6
+          ) {
+            hasTargetInLane = true;
+            break;
+          }
+        }
+        if (hasTargetInLane && p.cooldown <= 0) {
+          p.cooldown = p.kind === 'repeater' ? 1.05 : 1.35;
+          this.audio.playTurretShot();
+          const offsets = p.kind === 'repeater' ? [0.75, 1.35] : [0.85];
+          for (const ox of offsets) {
+            const mesh = createPvzBoltMesh(p.kind === 'repeater');
+            mesh.position.set(pos.x + ox, 1.15, pos.z);
+            this.scene.add(mesh);
+            this.pvzBolts.push({
+              mesh,
+              row: p.row,
+              x: pos.x + ox,
+              z: pos.z,
+              dmg: p.kind === 'repeater' ? 26 : 28,
+              active: true,
+            });
+          }
+        }
+      }
+    }
+
+    // Update bolts
+    for (let i = this.pvzBolts.length - 1; i >= 0; i--) {
+      const b = this.pvzBolts[i];
+      b.x += 20.0 * dt;
+      b.mesh.position.x = b.x;
+
+      if (b.x > 20.0) {
+        b.active = false;
+      } else {
+        for (let idx = 0; idx < this.act4Clones.length; idx++) {
+          const c4 = this.act4Clones[idx];
+          if (!c4.active || c4.deadTimer > 0 || this.pvzCloneRows[idx] !== b.row) continue;
+          if (Math.abs(b.x - c4.x) < 0.9) {
+            c4.hp -= b.dmg;
+            b.active = false;
+            this.emitParticles(c4.x, 1.2, c4.z, 'green');
+            if (c4.hp <= 0) {
+              c4.deadTimer = 0.65;
+              c4.currentBubbleText = 'X_X';
+              c4.bubbleTimer = 0.65;
+              this.audio.playPickup(false);
+            }
+            break;
+          }
+        }
+      }
+
+      if (!b.active) {
+        this.scene.remove(b.mesh);
+        this.disposeObjectResources(b.mesh);
+        this.pvzBolts.splice(i, 1);
+      }
+    }
+
+    // Spawn RONER wave enemies on lanes
+    if (this.pvzWaveToSpawn > 0) {
+      this.pvzWaveSpawnTimer -= dt;
+      if (this.pvzWaveSpawnTimer <= 0) {
+        const slotIdx = this.act4Clones.findIndex((c) => !c.active);
+        if (slotIdx >= 0) {
+          const row = Math.floor(Math.random() * PVZ_ROWS);
+          const pos = pvzTileWorldPos(row, 0);
+          const c4 = this.act4Clones[slotIdx];
+          this.pvzCloneRows[slotIdx] = row;
+          c4.active = true;
+          c4.x = PVZ_SPAWN_X + Math.random() * 1.4;
+          c4.z = pos.z;
+          c4.maxHp = 85 + (this.pvzWave - 1) * 32;
+          c4.hp = c4.maxHp;
+          c4.deadTimer = 0;
+          c4.speed = 2.0 + (this.pvzWave - 1) * 0.25;
+          c4.yaw = -Math.PI / 2;
+          c4.currentBubbleText = null;
+          c4.bubbleTimer = 0;
+          c4.rig.root.visible = true;
+          c4.rig.root.position.set(c4.x, 0, c4.z);
+          c4.rig.root.rotation.y = c4.yaw;
+          c4.rig.bodyPivot.rotation.x = 0;
+          c4.rig.bodyPivot.position.y = 0;
+          this.pvzWaveToSpawn -= 1;
+          this.pvzWaveSpawnTimer = Math.max(1.0, 2.8 - this.pvzWave * 0.35);
+        }
+      }
+    }
+
+    // Update RONER wave enemies
+    const spdMult = this.getEnemySpeedMultiplier();
+    let aliveRoner = 0;
+    for (let idx = 0; idx < this.act4Clones.length; idx++) {
+      const c4 = this.act4Clones[idx];
+      if (!c4.active) continue;
+      if (c4.bubbleTimer > 0) {
+        c4.bubbleTimer -= dt;
+        if (c4.bubbleTimer <= 0) c4.currentBubbleText = null;
+      }
+      if (c4.deadTimer > 0) {
+        c4.deadTimer -= dt;
+        animateRobloxCharacter(c4.rig, 0, dt, elapsed, false, true, true);
+        if (c4.deadTimer <= 0) {
+          c4.active = false;
+          c4.rig.root.visible = false;
+        }
+        continue;
+      }
+      aliveRoner++;
+
+      const row = this.pvzCloneRows[idx];
+      let blockingIdx = -1;
+      for (let pi = 0; pi < this.pvzPlants.length; pi++) {
+        const p = this.pvzPlants[pi];
+        if (p.row !== row) continue;
+        const pPos = pvzTileWorldPos(p.row, p.col);
+        if (Math.abs(c4.x - pPos.x) < 1.15 && c4.x >= pPos.x - 0.4) {
+          blockingIdx = pi;
+          break;
+        }
+      }
+
+      if (blockingIdx >= 0) {
+        const plant = this.pvzPlants[blockingIdx];
+        plant.hp -= 38 * spdMult * dt;
+        animateRobloxCharacter(c4.rig, 0.25, dt, elapsed, false, false, true);
+        c4.rig.leftArm.rotation.x = -1.4 + Math.sin(elapsed * 12) * 0.45;
+        c4.rig.rightArm.rotation.x = -1.4 - Math.sin(elapsed * 12) * 0.45;
+        if (plant.hp <= 0) {
+          this.scene.remove(plant.rig.group);
+          this.disposeObjectResources(plant.rig.group);
+          this.pvzPlants.splice(blockingIdx, 1);
+          this.audio.playBrickReturn();
+        }
+      } else {
+        c4.x -= c4.speed * spdMult * dt;
+        c4.rig.root.position.set(c4.x, 0, c4.z);
+        c4.rig.root.rotation.y = -Math.PI / 2;
+        animateRobloxCharacter(c4.rig, 0.85, dt, elapsed, false, false, true);
+
+        if (c4.x <= PVZ_HOUSE_DEFENSE_X) {
+          this.triggerCaught(c4);
+          return;
+        }
+      }
+    }
+
+    // Advance wave or complete PvZ minigame
+    if (this.pvzWaveToSpawn <= 0 && aliveRoner === 0) {
+      if (this.pvzWave < PVZ_WAVE_COUNTS.length) {
+        this.pvzWavePauseTimer += dt;
+        if (this.pvzWavePauseTimer >= 2.4) {
+          this.pvzWavePauseTimer = 0;
+          this.pvzWave += 1;
+          this.pvzWaveToSpawn = PVZ_WAVE_COUNTS[this.pvzWave - 1];
+          this.pvzWaveSpawnTimer = 0.8;
+          this.audio.playNightHorn();
+          const ui = getUiText(this.settings.language);
+          this.floatingTexts.push({
+            id: this.nextFloatId++,
+            text: `${ui.pvzWaveLabel} ${this.pvzWave}/${PVZ_WAVE_COUNTS.length}`,
+            worldX: 0,
+            worldY: 2.6,
+            worldZ: 0,
+            life: 1.6,
+            maxLife: 1.6,
+            isGold: true,
+          });
+          this.pushHud(true);
+        }
+      } else {
+        this.finishPvzVictory();
+      }
+    }
+  }
+
+  private finishPvzVictory(): void {
+    this.phase = 'victory';
+    this.cutsceneSubtitle = null;
+    this.playerBubbleText = null;
+    const unlocked = unlockSingleAchievement(this.achievements, 'pvz_gardener');
+    this.emitAchievementResult(unlocked);
+    this.audio.playVictoryFanfare();
+    this.pushHud(true);
+  }
+
   private updateCaught(dt: number, elapsed: number): void {
     this.caughtTimer -= dt;
     animateRobloxCharacter(this.playerRig, 0, dt, elapsed, false, true, false);
@@ -8662,7 +9954,8 @@ export class ForestGameEngine {
       this.activeWorldType === 'factory' ||
       this.activeWorldType === 'sniper_arena' ||
       this.activeWorldType === 'act3_park' ||
-      this.activeWorldType === 'act4_village';
+      this.activeWorldType === 'act4_village' ||
+      this.activeWorldType === 'pvz_arena';
 
     for (const c of this.chasers) {
       if (!c.active) continue;
@@ -8691,7 +9984,7 @@ export class ForestGameEngine {
       }
     }
 
-    if (this.mode === 'story_act3') {
+    if (this.mode === 'story_act3' || this.mode === 'act3_survival') {
       for (const rc of this.act3RonerArmy) {
         if (!rc.active || rc.deadTimer > 0) continue;
         if (rc.name === this.killerName) {
@@ -8705,7 +9998,7 @@ export class ForestGameEngine {
       }
     }
 
-    if (this.mode === 'story_act4') {
+    if (this.mode === 'story_act4' || this.mode === 'plants_vs_roners') {
       for (const c4 of this.act4Clones) {
         if (!c4.active || c4.deadTimer > 0) continue;
         if (c4.name === this.killerName) {
@@ -8739,7 +10032,7 @@ export class ForestGameEngine {
         this.camera.lookAt(_camLookTarget);
         return;
       }
-      if (this.mode === 'story_act3') {
+      if (this.mode === 'story_act3' || this.mode === 'act3_survival') {
         const orbitAng = elapsed * 0.16;
         _camDesiredPos.set(
           Math.sin(orbitAng) * 10.5,
@@ -8748,6 +10041,30 @@ export class ForestGameEngine {
         );
         this.camera.position.lerp(_camDesiredPos, Math.min(1, dt * 4));
         _camLookTarget.set(0, 1.5, -2.5);
+        this.camera.lookAt(_camLookTarget);
+        return;
+      }
+      if (this.mode === 'parkour_minigame') {
+        const orbitAng = elapsed * 0.18;
+        _camDesiredPos.set(
+          Math.sin(orbitAng) * 11.0,
+          5.2,
+          Math.cos(orbitAng) * 11.0 - 4.0
+        );
+        this.camera.position.lerp(_camDesiredPos, Math.min(1, dt * 4));
+        _camLookTarget.set(0, 1.8, -14.0);
+        this.camera.lookAt(_camLookTarget);
+        return;
+      }
+      if (this.mode === 'plants_vs_roners') {
+        const orbitAng = elapsed * 0.14;
+        _camDesiredPos.set(
+          Math.sin(orbitAng) * 4.0 - 1.5,
+          15.5,
+          Math.cos(orbitAng) * 2.5 + 16.5
+        );
+        this.camera.position.lerp(_camDesiredPos, Math.min(1, dt * 4));
+        _camLookTarget.set(0.5, 0.8, 0);
         this.camera.lookAt(_camLookTarget);
         return;
       }
@@ -8954,6 +10271,19 @@ export class ForestGameEngine {
       return;
     }
 
+    if (this.phase === 'victory' && (this.mode === 'parkour_minigame' || this.mode === 'plants_vs_roners')) {
+      const orbitAng = elapsed * 0.35;
+      _camDesiredPos.set(
+        this.playerX + Math.sin(orbitAng) * 6.5,
+        this.playerY + 4.5,
+        this.playerZ + Math.cos(orbitAng) * 6.5
+      );
+      this.camera.position.lerp(_camDesiredPos, Math.min(1, dt * 4));
+      _camLookTarget.set(this.playerX, this.playerY + 1.4, this.playerZ);
+      this.camera.lookAt(_camLookTarget);
+      return;
+    }
+
     if (this.phase === 'act2_teaser' || this.phase === 'victory') {
       const endX = storyPathCenterX(STORY_END_Z);
       _camDesiredPos.set(
@@ -8980,7 +10310,8 @@ export class ForestGameEngine {
         this.activeWorldType === 'factory' ||
         this.activeWorldType === 'sniper_arena' ||
         this.activeWorldType === 'act3_park' ||
-        this.activeWorldType === 'act4_village';
+        this.activeWorldType === 'act4_village' ||
+        this.activeWorldType === 'pvz_arena';
       const focusY = flatGround ? 0 : groundHeightAt(focusX, focusZ);
 
       _camDesiredPos.set(
@@ -9018,11 +10349,21 @@ export class ForestGameEngine {
       return;
     }
 
+    if (this.mode === 'plants_vs_roners') {
+      const tightW = this.camera.aspect < 1.35 ? 2.5 : 0;
+      _camDesiredPos.set(-1.5 - tightW, 17.0 + tightW, 17.5 + tightW);
+      this.camera.position.lerp(_camDesiredPos, Math.min(1, dt * 6));
+      _camLookTarget.set(1.2, 0.4, 0);
+      this.camera.lookAt(_camLookTarget);
+      return;
+    }
+
     const isFP =
       this.mode === 'first_person' ||
       this.mode === 'story_act1' ||
       this.mode === 'story_act2' ||
       this.mode === 'story_act3' ||
+      this.mode === 'act3_survival' ||
       this.mode === 'story_act4' ||
       this.mode === 'fnaf_epta' ||
       this.mode === 'sniper_minigame';
@@ -9047,8 +10388,10 @@ export class ForestGameEngine {
         this.playerZ + Math.cos(this.camYaw) * horizDist
       );
 
-      const minGround = groundHeightAt(_camDesiredPos.x, _camDesiredPos.z) + 1.1;
-      if (_camDesiredPos.y < minGround) _camDesiredPos.y = minGround;
+      if (this.mode !== 'parkour_minigame') {
+        const minGround = groundHeightAt(_camDesiredPos.x, _camDesiredPos.z) + 1.1;
+        if (_camDesiredPos.y < minGround) _camDesiredPos.y = minGround;
+      }
 
       this.camera.position.x = THREE.MathUtils.damp(
         this.camera.position.x,
@@ -9215,8 +10558,15 @@ export class ForestGameEngine {
       }
     }
 
-    if (this.mode === 'sniper_minigame' || this.mode === 'story_act3') {
-      const pool = this.mode === 'story_act3' ? this.act3RonerArmy : this.sniperClones;
+    if (
+      this.mode === 'sniper_minigame' ||
+      this.mode === 'story_act3' ||
+      this.mode === 'act3_survival'
+    ) {
+      const pool =
+        this.mode === 'story_act3' || this.mode === 'act3_survival'
+          ? this.act3RonerArmy
+          : this.sniperClones;
       for (const sc of pool) {
         if (!sc.active || !sc.rig.root.visible || !sc.currentBubbleText) continue;
         const pos = sc.rig.root.position;
@@ -9273,6 +10623,7 @@ export class ForestGameEngine {
     let nearestDist = 999;
     let act3RonerWaveAlive = 0;
     let act4EnemiesLeft = 0;
+    let pvzEnemiesLeft = 0;
     if (this.mode === 'sniper_minigame') {
       for (const sc of this.sniperClones) {
         if (!sc.active || sc.deadTimer > 0) continue;
@@ -9291,18 +10642,26 @@ export class ForestGameEngine {
         const bd = Math.hypot(this.chasers[1].x - this.playerX, this.chasers[1].z - this.playerZ);
         if (bd < nearestDist) nearestDist = bd;
       }
+    } else if (this.mode === 'plants_vs_roners') {
+      for (const c4 of this.act4Clones) {
+        if (!c4.active || c4.deadTimer > 0) continue;
+        pvzEnemiesLeft++;
+        const d = Math.hypot(c4.x - PVZ_HOUSE_DEFENSE_X, c4.z);
+        if (d < nearestDist) nearestDist = d;
+      }
+      pvzEnemiesLeft += this.pvzWaveToSpawn;
     } else {
       for (const c of this.chasers) {
         if (!c.active) continue;
         const d = Math.hypot(c.x - this.playerX, c.z - this.playerZ);
         if (d < nearestDist) nearestDist = d;
       }
-      if (this.mode === 'story_act3') {
+      if (this.mode === 'story_act3' || this.mode === 'act3_survival') {
         for (let idx = 0; idx < this.act3RonerArmy.length; idx++) {
           const rc = this.act3RonerArmy[idx];
           if (!rc.active || rc.deadTimer > 0) continue;
           const isRetreating =
-            this.act3Night < ACT3_MAX_NIGHTS &&
+            !this.act3HasSniper &&
             (this.act3NightRonerStates[idx]?.retreatTimer ?? 0) > 0;
           if (isRetreating) continue;
           act3RonerWaveAlive++;
@@ -9314,7 +10673,8 @@ export class ForestGameEngine {
 
     const isStory = this.mode === 'story_act1';
     const isAct2 = this.mode === 'story_act2';
-    const isAct3 = this.mode === 'story_act3';
+    const isAct3 = this.mode === 'story_act3' || this.mode === 'act3_survival';
+    const isSurvival = this.mode === 'act3_survival';
     const isAct4 = this.mode === 'story_act4';
     const isFnaf = this.mode === 'fnaf_epta';
     const isFactoryMode = isAct2 || isFnaf;
@@ -9336,6 +10696,11 @@ export class ForestGameEngine {
                 ? ACT3_LV6_METAL_COST
                 : 0;
 
+    const parkourProgress =
+      this.mode === 'parkour_minigame'
+        ? Math.round(THREE.MathUtils.clamp((-this.playerZ / 183.5) * 100, 0, 100))
+        : 0;
+
     this.callbacks.onHudUpdate({
       phase: this.phase,
       mode: this.mode,
@@ -9348,6 +10713,9 @@ export class ForestGameEngine {
           : null,
       bestMushrooms: this.bestMushrooms,
       elapsedSeconds: Math.floor(this.elapsedPlaying),
+      hardcoreTimeLeft: this.settings.hardcoreMode
+        ? Math.max(0, Math.ceil(this.hardcoreTimeLeft))
+        : null,
       stamina: Math.round(this.stamina),
       battery: Math.round(this.battery),
       hasBatteryLimit: isStory,
@@ -9359,7 +10727,9 @@ export class ForestGameEngine {
         ? act3RonerWaveAlive > 0
         : isAct4
           ? this.act4Stage === 'battle' && act4EnemiesLeft > 0
-          : (this.chasers[0]?.active ?? false),
+          : this.mode === 'plants_vs_roners'
+            ? pvzEnemiesLeft > 0
+            : (this.chasers[0]?.active ?? false),
       sashaSpawned: isAct4
         ? this.act4Wave === 7 && this.act4BossHp > 0
         : (this.chasers[1]?.active ?? false),
@@ -9399,19 +10769,20 @@ export class ForestGameEngine {
           this.ronerState === 'chasing_inside'),
       windowBreachProgress: Math.round(this.windowBreachProgress),
       act3Night: this.act3Night,
-      act3MaxNights: ACT3_MAX_NIGHTS,
+      act3MaxNights: isSurvival ? null : ACT3_MAX_NIGHTS,
       act3IsNight:
-        isAct3 && (this.act3Night >= ACT3_MAX_NIGHTS || this.act3DayClock >= ACT3_DAY_DURATION),
-      act3DayProgress:
-        this.act3Night >= ACT3_MAX_NIGHTS
-          ? 100
-          : Math.round((this.act3DayClock / ACT3_CYCLE_SECONDS) * 100),
-      act3PhaseSecondsLeft:
-        this.act3Night >= ACT3_MAX_NIGHTS
-          ? 0
-          : this.act3DayClock < ACT3_DAY_DURATION
-            ? Math.max(0, Math.ceil(ACT3_DAY_DURATION - this.act3DayClock))
-            : Math.max(0, Math.ceil(ACT3_CYCLE_SECONDS - this.act3DayClock)),
+        isAct3 &&
+        (this.act3HasSniper ||
+          (!isSurvival && this.act3Night >= ACT3_MAX_NIGHTS) ||
+          this.act3DayClock >= ACT3_DAY_DURATION),
+      act3DayProgress: this.act3HasSniper
+        ? 100
+        : Math.round((this.act3DayClock / ACT3_CYCLE_SECONDS) * 100),
+      act3PhaseSecondsLeft: this.act3HasSniper
+        ? 0
+        : this.act3DayClock < ACT3_DAY_DURATION
+          ? Math.max(0, Math.ceil(ACT3_DAY_DURATION - this.act3DayClock))
+          : Math.max(0, Math.ceil(ACT3_CYCLE_SECONDS - this.act3DayClock)),
       act3FireFuel: Math.round(this.act3FireFuel),
       act3LogsInHand: this.act3LogsInHand,
       act3MetalInHand: this.act3MetalInHand,
@@ -9425,6 +10796,17 @@ export class ForestGameEngine {
       act3HasSniper: this.act3HasSniper,
       act3Hp: this.act3Hp,
       act3MaxHp: this.act3MaxHp,
+      act3RiddleModalOpen: this.act3RiddleModalOpen,
+      parkourCheckpoint: this.parkourCheckpoint,
+      parkourTotalCheckpoints: this.parkourTotalCheckpoints,
+      parkourProgress,
+      pvzEnergy: Math.floor(this.pvzEnergy),
+      pvzWave: this.pvzWave,
+      pvzMaxWaves: PVZ_WAVE_COUNTS.length,
+      pvzSelectedPlant: this.pvzSelectedPlant,
+      pvzHoveredRow: this.pvzHoveredRow,
+      pvzHoveredCol: this.pvzHoveredCol,
+      pvzEnemiesRemaining: pvzEnemiesLeft,
       act4Stage: this.act4Stage,
       act4Kills: this.act4Kills,
       act4Wave: this.act4Wave,
@@ -9480,7 +10862,11 @@ export class ForestGameEngine {
         this.heldKeys.has('KeyD') ||
         Math.hypot(this.virtualMoveX, this.virtualMoveZ) > 0.05;
 
-      if (this.hitstopTimer > 0) {
+      this.updateHardcoreFirePool(elapsed);
+
+      if (this.orientationBlocked || this.act3RiddleModalOpen) {
+        // Freeze gameplay & timer while orientation lock or riddle modal is active
+      } else if (this.hitstopTimer > 0) {
         this.hitstopTimer -= dt;
       } else if (this.phase === 'intro_cutscene') {
         this.updateIntroCutscene(dt, elapsed);
@@ -9505,7 +10891,25 @@ export class ForestGameEngine {
       } else if (this.phase === 'act3_secret' && this.malinkaObjs) {
         this.malinkaObjs.neonSignMat.emissiveIntensity = 1.45 + Math.sin(elapsed * 3.0) * 0.35;
       } else if (this.phase === 'playing') {
-        this.updatePlaying(dt, elapsed);
+        if (this.settings.hardcoreMode) {
+          this.hardcoreTimeLeft = Math.max(0, this.hardcoreTimeLeft - dt);
+          if (this.hardcoreTimeLeft <= 0) {
+            this.hardcoreBurnout = true;
+            this.phase = 'gameover';
+            this.killerName = 'HARDCORE FIRE';
+            this.killerId = null;
+            this.heldKeys.clear();
+            this.isPrimaryFireHeld = false;
+            if (document.pointerLockElement === this.renderer.domElement) {
+              document.exitPointerLock?.();
+            }
+            this.audio.playExplosion();
+            this.pushHud(true);
+          }
+        }
+        if (this.phase === 'playing') {
+          this.updatePlaying(dt, elapsed);
+        }
       } else if (this.phase === 'caught') {
         this.updateCaught(dt, elapsed);
       } else if (this.phase === 'victory' && this.mode === 'story_act4') {
@@ -9582,15 +10986,30 @@ export class ForestGameEngine {
       }
     }
 
+    if (this.orientationBlocked || this.act3RiddleModalOpen) {
+      return;
+    }
+
+    if (!e.repeat && this.phase === 'playing' && this.mode === 'plants_vs_roners') {
+      const pvzKeys: PvzPlantType[] = ['sun', 'peashooter', 'repeater', 'wallnut', 'shovel'];
+      const slotKeys = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'];
+      const slotIdx = slotKeys.indexOf(e.code);
+      if (slotIdx >= 0 && pvzKeys[slotIdx]) {
+        this.selectPvzPlant(pvzKeys[slotIdx]);
+      }
+    }
+
     if (e.code === 'KeyE' && !e.repeat && this.phase === 'playing') {
       if (this.mode === 'story_act2' || this.mode === 'fnaf_epta') {
         this.interactFactory();
-      } else if (this.mode === 'story_act3') {
+      } else if (this.mode === 'story_act3' || this.mode === 'act3_survival') {
         this.interactAct3Park();
       } else if (this.mode === 'story_act4') {
         this.interactAct4Village();
       } else if (this.mode === 'sniper_minigame') {
         this.fireSniperShot();
+      } else if (this.mode === 'plants_vs_roners') {
+        this.interactPvz();
       }
     }
 
@@ -9666,10 +11085,36 @@ export class ForestGameEngine {
 
   private onPointerDown = (e: PointerEvent) => {
     this.audio.unlock();
-    if (this.phase !== 'playing') return;
+    if (this.phase !== 'playing' || this.orientationBlocked || this.act3RiddleModalOpen) return;
 
     if (e.button === 2) {
       this.toggleFlashlight();
+      return;
+    }
+
+    if (this.mode === 'plants_vs_roners' && e.button === 0) {
+      if (this.pvzArenaObjs) {
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        this.pvzMouseNdc.set(
+          ((e.clientX - rect.left) / rect.width) * 2 - 1,
+          -((e.clientY - rect.top) / rect.height) * 2 + 1
+        );
+        this.pvzRaycaster.setFromCamera(this.pvzMouseNdc, this.camera);
+        const hits = this.pvzRaycaster.intersectObjects(
+          this.pvzArenaObjs.tiles.map((t) => t.tileMesh),
+          false
+        );
+        if (hits.length > 0) {
+          const hitTile = this.pvzArenaObjs.tiles.find((t) => t.tileMesh === hits[0].object);
+          if (hitTile) {
+            this.pvzHoveredRow = hitTile.row;
+            this.pvzHoveredCol = hitTile.col;
+            this.interactPvz(hitTile.row, hitTile.col);
+            return;
+          }
+        }
+      }
+      this.interactPvz();
       return;
     }
 
@@ -9678,6 +11123,7 @@ export class ForestGameEngine {
       this.mode === 'story_act1' ||
       this.mode === 'story_act2' ||
       this.mode === 'story_act3' ||
+      this.mode === 'act3_survival' ||
       this.mode === 'story_act4' ||
       this.mode === 'fnaf_epta' ||
       this.mode === 'sniper_minigame';
@@ -9700,7 +11146,7 @@ export class ForestGameEngine {
       this.isPrimaryFireHeld = true;
       if (this.mode === 'story_act2' || this.mode === 'fnaf_epta') {
         this.interactFactory();
-      } else if (this.mode === 'story_act3') {
+      } else if (this.mode === 'story_act3' || this.mode === 'act3_survival') {
         this.interactAct3Park();
       } else if (this.mode === 'story_act4') {
         if (this.act4Stage === 'walk_to_house') {
@@ -9719,12 +11165,36 @@ export class ForestGameEngine {
   };
 
   private onPointerMove = (e: PointerEvent) => {
-    if (this.phase !== 'playing') return;
+    if (this.phase !== 'playing' || this.orientationBlocked || this.act3RiddleModalOpen) return;
+    if (this.mode === 'plants_vs_roners') {
+      if (this.pvzArenaObjs) {
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        this.pvzMouseNdc.set(
+          ((e.clientX - rect.left) / rect.width) * 2 - 1,
+          -((e.clientY - rect.top) / rect.height) * 2 + 1
+        );
+        this.pvzRaycaster.setFromCamera(this.pvzMouseNdc, this.camera);
+        const hits = this.pvzRaycaster.intersectObjects(
+          this.pvzArenaObjs.tiles.map((t) => t.tileMesh),
+          false
+        );
+        if (hits.length > 0) {
+          const hitTile = this.pvzArenaObjs.tiles.find((t) => t.tileMesh === hits[0].object);
+          if (hitTile) {
+            this.pvzHoveredRow = hitTile.row;
+            this.pvzHoveredCol = hitTile.col;
+          }
+        }
+      }
+      return;
+    }
+
     const isFP =
       this.mode === 'first_person' ||
       this.mode === 'story_act1' ||
       this.mode === 'story_act2' ||
       this.mode === 'story_act3' ||
+      this.mode === 'act3_survival' ||
       this.mode === 'story_act4' ||
       this.mode === 'fnaf_epta' ||
       this.mode === 'sniper_minigame';
@@ -9738,7 +11208,7 @@ export class ForestGameEngine {
           this.lockerCenterCamYaw + 0.55
         );
       }
-      const minP = isFP ? -0.65 : 0.18;
+      const minP = isFP ? -0.65 : 0.15;
       const maxP = isFP ? 0.65 : 0.72;
       this.camPitch = THREE.MathUtils.clamp(
         this.camPitch + e.movementY * 0.0022,
@@ -9761,7 +11231,7 @@ export class ForestGameEngine {
         this.lockerCenterCamYaw + 0.55
       );
     }
-    const minP = isFP ? -0.65 : 0.18;
+    const minP = isFP ? -0.65 : 0.15;
     const maxP = isFP ? 0.65 : 0.72;
     this.camPitch = THREE.MathUtils.clamp(this.camPitch + dy * 0.004, minP, maxP);
   };
@@ -9841,6 +11311,17 @@ export class ForestGameEngine {
         d.dispose();
       }
     }
+    if (this.parkourObjs) {
+      for (const d of this.parkourObjs.disposables) {
+        d.dispose();
+      }
+    }
+    if (this.pvzArenaObjs) {
+      for (const d of this.pvzArenaObjs.disposables) {
+        d.dispose();
+      }
+    }
+    this.clearPvzDynamicEntities();
     this.clearAct3Collectibles();
     this.clearFactoryDynamicEntities();
     this.scene.traverse((obj) => {

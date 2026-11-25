@@ -42,6 +42,9 @@ export const AchievementsModal: React.FC<AchievementsModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <div className="rounded-lg border border-rose-400/40 bg-rose-500/15 px-2.5 py-1 text-xs font-black tabular-nums text-rose-300">
+              {t.hardcoreActsProgress} {state.hardcoreActsCleared.length}/4
+            </div>
             <div className="rounded-lg border border-amber-400/40 bg-amber-500/15 px-2.5 py-1 text-xs font-black tabular-nums text-amber-300">
               {unlockedCount}/{totalCount}
             </div>

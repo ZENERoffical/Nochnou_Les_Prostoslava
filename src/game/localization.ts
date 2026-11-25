@@ -6,6 +6,11 @@ export const DEFAULT_SETTINGS: GameSettings = {
   language: 'ru',
   censorship: true,
   familyMode: false,
+  hardcoreMode: false,
+  voidMode: false,
+  graphicsQuality: 'high',
+  mobileMode: false,
+  autoAim: false,
 };
 
 export function loadSettings(): GameSettings {
@@ -14,10 +19,23 @@ export function loadSettings(): GameSettings {
     if (!raw) return { ...DEFAULT_SETTINGS };
     const parsed = JSON.parse(raw) as Partial<GameSettings>;
     const familyMode = Boolean(parsed.familyMode);
+    const language: GameLanguage =
+      parsed.language === 'en' ? 'en' : parsed.language === 'pl' ? 'pl' : 'ru';
+    const graphicsQuality =
+      parsed.graphicsQuality === 'low' ||
+      parsed.graphicsQuality === 'medium' ||
+      parsed.graphicsQuality === 'high'
+        ? parsed.graphicsQuality
+        : 'high';
     return {
-      language: parsed.language === 'en' ? 'en' : 'ru',
-      censorship: familyMode ? true : Boolean(parsed.censorship),
+      language,
+      censorship: familyMode ? true : parsed.censorship !== undefined ? Boolean(parsed.censorship) : true,
       familyMode,
+      hardcoreMode: Boolean(parsed.hardcoreMode),
+      voidMode: Boolean(parsed.voidMode),
+      graphicsQuality,
+      mobileMode: Boolean(parsed.mobileMode),
+      autoAim: Boolean(parsed.autoAim),
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -42,6 +60,21 @@ export interface LocalizedLine {
  * Standard chaser phrases (Коч коч братан, Танцуй пантера, ГОЛДА).
  */
 export function getStandardChaserPhrases(settings: GameSettings): LocalizedLine[] {
+  if (settings.language === 'pl') {
+    if (settings.familyMode) {
+      return [
+        { display: 'Kocz kocz, kolego!', speech: 'Kocz kocz, kolego!' },
+        { display: 'Tańcz, pantero!', speech: 'Tańcz, pantero!' },
+        { display: 'ZŁOTKO!', speech: 'Złotko!' },
+      ];
+    }
+    return [
+      { display: 'Kocz kocz, bracie!', speech: 'Kocz kocz, bracie!' },
+      { display: 'Tańcz, pantero!', speech: 'Tańcz, pantero!' },
+      { display: 'GOLDA!', speech: 'Golda!' },
+    ];
+  }
+
   if (settings.language === 'en') {
     if (settings.familyMode) {
       return [
@@ -78,6 +111,16 @@ export function pickRandomChaserPhrase(settings: GameSettings): LocalizedLine {
 }
 
 export function getKrysaRetreatLine(settings: GameSettings): LocalizedLine {
+  if (settings.language === 'pl') {
+    if (settings.familyMode) {
+      return { display: 'Ale z ciebie spryciarz!', speech: 'Ale z ciebie spryciarz!' };
+    }
+    if (settings.censorship) {
+      return { display: 'Ale z ciebie [***]!', speech: 'Ale z ciebie!', hasCensorBeep: true };
+    }
+    return { display: 'Ale z ciebie szczur!', speech: 'Ale z ciebie szczur!' };
+  }
+
   if (settings.language === 'en') {
     if (settings.familyMode) {
       return {
@@ -118,6 +161,19 @@ export function getKrysaRetreatLine(settings: GameSettings): LocalizedLine {
 }
 
 export function getCaughtScreamLine(settings: GameSettings): LocalizedLine {
+  if (settings.language === 'pl') {
+    if (settings.familyMode) {
+      return {
+        display: 'BEREK! CHCĘ BYĆ JAK GAZAN!!!!!!',
+        speech: 'Berek! Chcę być jak Gazan!',
+      };
+    }
+    return {
+      display: 'CHCĘ BYĆ JAK GAZAN!!!!!!',
+      speech: 'Chcę być jak Gazan!',
+    };
+  }
+
   if (settings.language === 'en') {
     if (settings.familyMode) {
       return {
@@ -179,8 +235,48 @@ export function getCutsceneLine(
   key: CutsceneLineKey,
   settings: GameSettings
 ): LocalizedLine {
-  const isEn = settings.language === 'en';
+  const isEn = settings.language === 'en' || settings.language === 'pl';
+  const isPl = settings.language === 'pl';
   const censored = settings.censorship || settings.familyMode;
+
+  if (isPl) {
+    const plLines: Partial<Record<CutsceneLineKey, LocalizedLine>> = {
+      intro_0: { display: 'Dobra, potrzebuję grzybów Prostophilya do zupki Mivina.', speech: 'Dobra, potrzebuję grzybów Prostophilya do zupki Mivina.' },
+      intro_1: censored
+        ? { display: 'Ej [***]! Zaraz cię złapiemy, jasne?!', speech: 'Ej! Zaraz cię złapiemy, jasne?', hasCensorBeep: true }
+        : { display: 'Siema Eblan! Już po tobie, jasne?!', speech: 'Siema Eblan! Już po tobie, jasne?' },
+      intro_1_b: { display: 'No jasne, nie?!', speech: 'No jasne, nie?' },
+      intro_2: { display: 'MASZ LATARKĄ PO OCZACH!!!!!!', speech: 'Masz latarką po oczach!' },
+      intro_3: { display: 'O NIE, JESZCZE CIĘ DORWIEMY!!!!!!!!', speech: 'O nie, jeszcze cię dorwiemy!' },
+      outro_0: { display: 'UCIEKAJCIE ZE SWOIMI ŻARTAMI, GOTUJĘ MIVINĘ!!!!!!!!', speech: 'Uciekajcie ze swoimi żartami, gotuję Mivinę!' },
+      act2_teaser: { display: 'Wow... drzwi fabryki lekko uchylone! Ciąg dalszy w Akcie 2!', speech: 'Drzwi fabryki uchylone! Ciąg dalszy w Akcie dwa!' },
+      act2_secret: { display: 'Drzwi Mivina Corporation uchylone... Przejdź Akt 1 (1000m), aby tu dotrzeć!', speech: 'Drzwi Mivina Corporation uchylone!' },
+      act3_secret: { display: 'Wow... to jest miasto «Malinka»! Za bramą czeka Akt 3!', speech: 'To jest miasto Malinka! Akt trzeci czeka!' },
+      act2_intro_0: { display: 'Uff, uciekłem od tych wariatów!', speech: 'Uff, uciekłem od tych wariatów!' },
+      act2_intro_1: { display: 'SUPER!! WRESZCIE ZROBIĘ MOJĄ MIVINĘ!!!!!!', speech: 'Super! Wreszcie zrobię moją Mivinę!' },
+      act2_intro_2a: { display: 'Ej!! Oszalałeś czy co?!', speech: 'Ej! Oszalałeś czy co?' },
+      act2_intro_2b: { display: 'Świecisz mi prosto w oczy!', speech: 'Świecisz mi prosto w oczy!' },
+      act2_intro_2c: { display: 'No to masz problem kolego!!', speech: 'No to masz problem kolego!' },
+      act2_door_0: { display: 'Czekaj, dlaczego tu są KOLEJNE drzwi?!', speech: 'Dlaczego tu są kolejne drzwi?' },
+      act2_door_1: { display: 'Łał... co to za gigantyczny korytarz?!', speech: 'Co to za gigantyczny korytarz?' },
+      act2_final_0: { display: 'Dobra, koniec gry dla nich >:)', speech: 'Dobra, koniec gry dla nich!' },
+      act2_outro_0: { display: '360 SNAJPER!! WYJŚCIE LOL, DO ZOBACZENIA!', speech: 'Trzysta sześćdziesiąt snajper! Wyjście lol!' },
+      act3_intro_0: { display: 'O nie, będzie po mnie jeśli stąd nie ucieknę!', speech: 'Będzie po mnie jeśli stąd nie ucieknę!' },
+      act3_outro_0: { display: 'Boże miłosierny, ledwo przeżyłem!', speech: 'Boże miłosierny, ledwo przeżyłem!' },
+      act3_outro_1: { display: 'Ty oszuście, wstrętny aimerze!!!!!!', speech: 'Ty oszuście, wstrętny aimerze!' },
+      act3_outro_2: { display: 'tam musimy iść...', speech: 'tam musimy iść...' },
+      act4_intro_0: { display: 'Ależ ich tam załatwiłem!', speech: 'Ależ ich tam załatwiłem!' },
+      act4_intro_1: censored ? { display: 'Cześć Nikita [***]))))', speech: 'Cześć Nikita!', hasCensorBeep: true } : { display: 'Hi Nikita pedofail))))', speech: 'Hi Nikita pedofail!' },
+      act4_intro_2: { display: 'Ej, oszalałeś?!', speech: 'Ej, oszalałeś?' },
+      act4_intro_3: { display: 'Lubisz pizzę?', speech: 'Lubisz pizzę?' },
+      act4_intro_4: { display: 'KOCHAŁEM TEN CHLEB!!!!', speech: 'Kochałem ten chleb!' },
+      act4_house_0: { display: 'Nikita, łap pistolet — nadchodzą klony RONER! Kupuj bronie i wieżyczki za kille!', speech: 'Nikita, łap pistolet! Nadchodzą klony Roner!' },
+      act4_uzi_secret: { display: 'MASZ ZA SWOJE!!!!!!!', speech: 'Masz za swoje!' },
+      act4_outro_0: { display: 'Najlepsza Mivina i herbatka we trójkę — nikt nam nie podskoczy!', speech: 'Najlepsza Mivina i herbatka we trójkę!' },
+    };
+    const match = plLines[key];
+    if (match) return match;
+  }
 
   switch (key) {
     case 'intro_0':
@@ -1248,6 +1344,45 @@ export function getAchievementText(
   id: AchievementId,
   lang: GameLanguage
 ): { title: string; desc: string } {
+  if (lang === 'pl') {
+    switch (id) {
+      case 'act1_clear':
+        return { title: 'Jacyś idioci...', desc: 'Ukończ Akt 1' };
+      case 'act2_clear':
+        return { title: 'Mivina jest moja!', desc: 'Ukończ Akt 2' };
+      case 'act3_malinka':
+        return { title: 'Malinowe chmury', desc: 'Ukończ Akt 3' };
+      case 'fnaf_50':
+        return { title: '5 na 20', desc: 'Zapakuj 50 Mivin w mini-grze «FNAF Epta»' };
+      case 'fnaf_100':
+        return { title: 'Król Miviny', desc: 'Zapakuj 100 Mivin w mini-grze «FNAF Epta»' };
+      case 'mush_50':
+        return { title: 'Leśniczy', desc: 'Zbierz 50 grzybów' };
+      case 'mush_100':
+        return { title: 'Grzyboświr', desc: 'Zbierz 100 grzybów' };
+      case 'mush_200':
+        return { title: 'Król Grzybów', desc: 'Zbierz 200 grzybów' };
+      case 'sniper_100':
+        return { title: 'Snajper mamusi', desc: 'Pokonaj 100 klonów w «Snajperka teraz moja!»' };
+      case 'secret_malinka':
+        return { title: 'Zagadka od Jacquesa Fresco', desc: 'W Akcie 3 znajdź tabliczkę P+P=? w rogu parku i odpowiedz 28' };
+      case 'act4_shahediki':
+        return { title: 'Szahediki', desc: 'Ukryty easter egg z Uzi w Akcie 4' };
+      case 'act4_jojo':
+        return { title: 'Impreza z Miviną i herbatką', desc: 'Ukończ Akt 4 w wiosce «JoJo»' };
+      case 'act3_40_days':
+        return { title: 'Ile jeszcze można?', desc: 'Przetrwaj 40 dni w trybie «Przetrwanie»' };
+      case 'act3_99_days':
+        return { title: "99 Roner's w lesie", desc: 'Przetrwaj 99 dni w trybie «Przetrwanie»' };
+      case 'parkour_clear':
+        return { title: 'Jestem Skoczkiem!', desc: 'Ukończ mini-grę «Parkour»' };
+      case 'pvz_gardener':
+        return { title: 'Ogrodnik', desc: "Ukończ mini-grę «Rośliny kontra Roner's»" };
+      case 'hardcore_all_acts':
+        return { title: 'SPALACZ TYŁKA 3000', desc: 'Ukończ wszystkie 4 Akty w trybie Hardcore' };
+    }
+  }
+
   const isEn = lang === 'en';
   switch (id) {
     case 'act1_clear':
@@ -1288,8 +1423,8 @@ export function getAchievementText(
         : { title: 'Мамкин Снайпер', desc: 'Убить 100 клонов в мини-игре «Снайперка теперь моя!»' };
     case 'secret_malinka':
       return isEn
-        ? { title: 'Jacque Fresco Secret', desc: 'Peek at the entrance to city «Malinka»' }
-        : { title: 'Секретик от жако фреско', desc: 'Посмотреть на город Малинка' };
+        ? { title: 'Jacque Fresco Riddle', desc: 'In Act 3, find the P+P=? sign in the park corner and answer 28' }
+        : { title: 'Загадка от жака фреско', desc: 'В Акте 3 найди табличку P+P=? в углу парка и ответь 28' };
     case 'act4_shahediki':
       return isEn
         ? { title: 'Shahediki', desc: 'Secret Easter egg while holding the Uzi in Act 4' }
@@ -1298,10 +1433,289 @@ export function getAchievementText(
       return isEn
         ? { title: 'Mivina & Tea Party', desc: 'Complete Act 4 in «JoJo» Village' }
         : { title: 'Мивина с чайком', desc: 'Пройти Акт 4 в деревне «ДжоДжо»' };
+    case 'act3_40_days':
+      return isEn
+        ? { title: 'How Much Longer?', desc: 'Survive 40 days in «Survival»' }
+        : { title: 'Сколько можно?', desc: 'Прожить 40 дней в мини-игре «Выжывачь»' };
+    case 'act3_99_days':
+      return isEn
+        ? { title: "99 Roner's in the Woods", desc: 'Survive 99 days in «Survival»' }
+        : { title: "99 Roner's в лесу", desc: 'Прожить 99 дней в мини-игре «Выжывачь»' };
+    case 'parkour_clear':
+      return isEn
+        ? { title: 'I Am a Jumper!', desc: 'Complete the «Parkour» minigame' }
+        : { title: 'Я Прыгун!', desc: 'Пройти мини-игру «Паркур»' };
+    case 'pvz_gardener':
+      return isEn
+        ? { title: 'Gardener', desc: "Complete «Plants vs Roner's» minigame" }
+        : { title: 'Садовник', desc: "Пройти мини-игру «Ростения против Roner's»" };
+    case 'hardcore_all_acts':
+      return isEn
+        ? { title: 'ASS BURNER 3000', desc: 'Complete all 4 Story Acts with Hardcore Mode ON' }
+        : { title: 'ЖОПА СЖИГАТЕЛЬ 3000', desc: 'Пройти все 4 Акта в режиме Хардкор' };
   }
 }
 
 export function getUiText(lang: GameLanguage) {
+  if (lang === 'pl') {
+    return {
+      titleTop: 'NOCNY LAS',
+      titleBottom: 'PROSTOPHILYA',
+      titleSubtitle: 'Przygody Nikity: Po Mivinę do fabryki',
+      muteLabel: 'Wycisz dźwięk',
+      unmuteLabel: 'Włącz dźwięk',
+      settingsBtn: 'Ustawienia',
+      achievementsBtn: 'Osiągnięcia',
+      achievementsTitle: 'OSIĄGNIĘCIA',
+      achievementUnlockedLabel: 'ODBLOKOWANO OSIĄGNIĘCIE!',
+      achievementsProgressHint: 'Zdobywaj osiągnięcia w Fabule, sekretach i mini-grach',
+      unlockedLabel: 'Odblokowano',
+      lockedLabel: 'Zablokowano',
+      tabStory: 'Fabuła',
+      tabMinigames: 'Mini-gry',
+      modeStory: 'Fabuła · Akt 1',
+      modeStory2: 'Fabuła · Akt 2',
+      modeStory3: 'Fabuła · Akt 3',
+      modeStory4: 'Fabuła · Akt 4',
+      modeAct2Title: 'Akt 2 · Fabryka',
+      modeAct2Sub: '20 Mivin + Korytarz',
+      modeAct3Sub: '30 Nocy · Park Malinka',
+      modeAct4Sub: 'Wioska JoJo · 7 Fal',
+      modeAct2Tooltip: 'Sekret: wejście do fabryki Mivina Corporation',
+      act2SecretLink: 'Sekret: Wejście Akt 2',
+      act3SecretLink: 'Sekret: Akt 3 (Malinka)',
+      modeFnafTitle: 'FNAF Epta',
+      modeFnafSub: 'Nieskończony Akt 2',
+      modeSniperTitle: 'Snajperka moja!',
+      modeSniperSub: 'Fale klonów',
+      modeAct3SurvivalTitle: 'Przetrwanie',
+      modeAct3SurvivalSub: 'Nieskończony Akt 3',
+      modeParkourTitle: 'Parkour',
+      modeParkourSub: 'Wielki tor',
+      modePvzTitle: "Rośliny vs Roner's",
+      modePvzSub: 'Obrona ogrodu',
+      modeFP: '1. osoba',
+      modeHardcore: 'Hardcore 3 os.',
+      endless: 'Nieskończony',
+      record: 'Rekord',
+      descStory: 'Akt 1 (1000m): Przejdź zamgloną drogę 1000m, zbierz 40 grzybów i dotrzyj do Mivina Corporation!',
+      descStory2: 'Akt 2 (Fabryka): Zapakuj 20 Mivin po klucz, przejdź długi korytarz chowając się w szafach [E] przed Saszą!',
+      descStory3: 'Akt 3 (Park Malinka): Dzień 1m / Noc 1m · 30 Nocy! Pilnuj ogniska [E], odstraszaj nocne RONERy [F], ulepsz bazę do poz. 6 i pokonaj Noc 30!',
+      descStory4: 'Akt 4 (Wioska JoJo): Spotkaj Giorno, odbierz broń od Saszy i Ronera, pokonaj 7 fal i Bossa Saszę 67 (11488 HP)!',
+      descFnaf: 'FNAF Epta (Nieskończony Akt 2): Pakuj partie po 20 Mivin, chowaj się w szafie [E] i świeć w okna [F]!',
+      descSniper: 'Snajperka teraz moja!: Strzelaj do fal klonów Saszy i RONERów [LPM / E] i bij rekord!',
+      descAct3Survival: 'Przetrwanie (Nieskończony Akt 3): Przeżyj jak najwięcej dni w Parku Malinka! Celuj w 40 i 99 dni!',
+      descParkour: 'Parkour: Pokonaj wielki podniebny tor z ruchomymi platformami, trampolinami i checkpointami!',
+      descPvz: "Rośliny kontra Roner's: Sadź Słoneczniki, Działka Grochowe i Orzechy [E/LPM] na trawniku 5×8 i powstrzymaj 4 fale RONERów!",
+      descFP: 'Tryb Nieskończony (1. osoba): Świeć latarką [F] na RONER_552 i sasha55k_XL!',
+      descHardcore: 'Tryb Nieskończony (Hardcore 3. osoba): Szybsi i groźniejsi przeciwnicy!',
+      playBtn: 'GRAJ',
+      controlsTitle: 'WASD Ruch · Shift Sprint · Space Skok · F Latarka · E/LPM Akcja / Strzał',
+      controlsHud: 'WASD Ruch · Shift Bieg · Space Skok · F/PPM Latarka · Mysz Rozglądanie · Esc Pauza',
+      controlsHudAct2: 'WASD Ruch · E/LPM Pudełko / Szafa / Prasa / Drzwi · F Świeć w okno · Esc Pauza',
+      controlsHudAct3: 'WASD Ruch · Shift Bieg · E/LPM Drewno / Metal / Ognisko / Prasa / Snajper · F Latarka · Esc Pauza',
+      controlsHudAct4: 'WASD Ruch · LPM Ogień · 1-6 Broń · E Sklep / Rozmowa · F Latarka · Esc Pauza',
+      controlsHudSniper: 'WASD Ruch · Shift Bieg · Space Skok · LPM / E Strzał · Mysz Celowanie · Esc Pauza',
+      controlsHudParkour: 'WASD Ruch · Shift Sprint · Space Skok · Mysz Kamera · Esc Pauza',
+      controlsHudPvz: 'WASD Ruch · 1-5 Wybierz roślinę/łopatę · E/LPM Posadź / Wykop · Esc Pauza',
+      hideControls: 'Ukryj sterowanie',
+      showControls: 'Sterowanie',
+      mushroomName: 'Prostophilya',
+      badgeHardcore: 'HARDCORE 3 OS. · BEZ KOŃCA',
+      badgeStory: 'AKT 1',
+      badgeStory2: 'AKT 2 · FABRYKA',
+      badgeFP: '1 OSOBA · BEZ KOŃCA',
+      fnafBadge: 'FNAF EPTA · BEZ KOŃCA',
+      fnafTotalLabel: 'Razem Mivin',
+      fnafBatchLabel: 'Partia',
+      fnafStageLoop: 'Nieskończona pętla: przypraw 20 Mivin, zapakuj i przetrwaj!',
+      sniperBadge: 'SNAJPERKA TERAZ MOJA!',
+      sniperClonesLabel: 'Zabite klony',
+      sniperWaveLabel: 'Fala',
+      sniperHpLabel: 'Pancerz',
+      sniperShootPrompt: 'OGIEŃ [LPM / E]',
+      sniperTouchFire: 'OGIEŃ',
+      factoryShort: 'Mivina Corp.:',
+      panther: 'PANTERA!',
+      stamina: 'Wytrzymałość',
+      battery: 'Bateria',
+      dangerNearby: 'Pościg blisko:',
+      act2Badge: 'AKT 2 · MIVINA CORP.',
+      act2SeasonedLabel: 'Przyprawione',
+      act2PackedLabel: 'Spakowane',
+      act2PacketsLabel: 'Paczki',
+      act2MushroomsStock: 'Grzyby',
+      act2KeyBadge: 'KLUCZ DO KORYTARZA',
+      act2StageConveyor: 'Etap 1: Przypraw 20 klusek na taśmie',
+      act2StagePackaging: 'Etap 2: Zapakuj 20 Mivin przy prasie po Klucz!',
+      act2StageCorridorKey: 'Etap 3: Masz klucz! Otwórz drzwi Północnego Skrzydła',
+      act2StageCorridor: 'Etap 4: Przejdź długi korytarz, chowaj się w szafach [E] i znajdź «Wyjście LOL»!',
+      act2CorridorProgressLabel: 'Wyjście LOL',
+      act2TouchInteract: 'AKCJA (E)',
+      act2HidingBadge: 'SCHOWANY W SZAFIE · [E / LPM] WYJDŹ',
+      act2FlickerWarning: 'ŚWIATŁO MIGA! Idzie ślepy Sasza — CHOWAJ SIĘ W SZAFIE [E]!',
+      act2AlarmWarning: 'ALARM! RONER wybija okno — ŚWIEĆ NA NIEGO LATARKĄ [F]!',
+      act2WindowBreachLabel: 'Wyłamanie okna',
+      pauseTitle: 'PAUZA',
+      collectedLabel: 'Zebrane grzyby:',
+      resumeBtn: 'WZNÓW',
+      restartBtn: 'OD NOWA',
+      menuBtn: 'MENU GŁÓWNE',
+      cutsceneAct1: 'FABUŁA · AKT 1',
+      cutsceneAct2: 'PRZYGODY NIKITY · DO FABRYKI MIVINY',
+      cutsceneAct3: 'AKT 3 · 30 NOCY W PARKU MALINKA',
+      cutsceneAct4: 'AKT 4 · WIOSKA «JOJO»',
+      cutsceneSecret: 'SEKRET · ZAPOWIEDŹ AKTU 2 — «MIVINA CORPORATION»',
+      cutsceneAct3Secret: 'SEKRET · AKT 3 — BRAMA MIASTA «MALINKA»',
+      skipBtn: 'Pomiń',
+      menuShort: 'Menu',
+      secretHint: 'Naciśnij Esc / Space lub «Menu główne», aby wrócić',
+      skipHint: 'Naciśnij Space lub kliknij «Pomiń»',
+      victoryTitle: 'AKT 1 UKOŃCZONY!',
+      victorySub: 'Grzyby na Mivinę uratowane!',
+      victorySaidPrefix: 'nikitys6666 uciekł do «Mivina Corporation»:',
+      act2CardTitle: 'AKT 2 — FABRYKA MIVINY GOTOWA!',
+      act2CardSub: 'Przerób swoje grzyby na 20 zapakowanych Mivin!',
+      act2EnterBtn: 'PRZEJDŹ DO AKTU 2: FABRYKA',
+      act3CardTitle: 'AKT 3 — PRZETRWANIE W PARKU MALINKA!',
+      act3CardSub: 'Przeżyj 30 nocy z Wielkim Saszą (×2), ulepsz obóz i pokonaj Noc 30!',
+      act3EnterBtn: 'PRZEJDŹ DO AKTU 3: PARK MALINKA',
+      act4CardTitle: 'AKT 4 — WIOSKA «JOJO»!',
+      act4CardSub: 'Spotkaj Giorno, zdobądź broń od Saszy i Ronera, pokonaj 7 fal i Bossa Saszę 67!',
+      act4EnterBtn: 'PRZEJDŹ DO AKTU 4: WIOSKA «JOJO»',
+      act2SecretBtn: 'Sekret: Pokaż wejście fabryki',
+      act2VictoryTitle: 'AKT 2 UKOŃCZONY!',
+      act2VictorySub: '20 Grzybowych Mivin wyprodukowane i spakowane!',
+      act2VictorySaid: 'nikitys6666 zapieczętował skrzynię:',
+      act3VictoryTitle: 'AKT 3 UKOŃCZONY!',
+      act3VictorySub: '30 Nocy w Parku Malinka przetrwane! Armia RONER zniszczona!',
+      act3VictorySaid: 'nikitys6666 rusza do wioski «JoJo»:',
+      act4VictoryTitle: 'AKT 4 UKOŃCZONY!',
+      act4VictorySub: 'Boss Sasza 67 pokonany! Mivina i herbatka z Saszą i Ronerem!',
+      act4VictorySaid: 'nikitys6666, Sasza i Roner przy stole:',
+      parkourVictoryTitle: 'PARKOUR UKOŃCZONY!',
+      parkourVictorySub: 'Dotarłeś na szczyt podniebnego toru przeszkód!',
+      parkourVictorySaid: 'nikitys6666 na mecie:',
+      pvzVictoryTitle: 'OGRÓD OBRONIONY!',
+      pvzVictorySub: "Wszystkie 4 fale RONER's zostały powstrzymane przez Twoje wieżyczki!",
+      pvzVictorySaid: 'nikitys6666 — mistrz ogrodnictwa:',
+      replayAct2: 'Zagraj Akt 2 ponownie',
+      replayAct3: 'Zagraj Akt 3 ponownie',
+      replayAct4: 'Zagraj Akt 4 ponownie',
+      replayParkour: 'Zagraj Parkour ponownie',
+      replayPvz: "Zagraj Rośliny vs Roner's ponownie",
+      act3Badge: 'AKT 3 · PARK MALINKA',
+      act3SurvivalBadge: 'PRZETRWANIE · BEZ KOŃCA',
+      parkourBadge: 'PARKOUR · TOR PRZESZKÓD',
+      parkourCheckpointLabel: 'Checkpoint',
+      parkourProgressLabel: 'Postęp',
+      pvzBadge: "ROŚLINY VS RONER'S",
+      pvzEnergyLabel: 'Energia',
+      pvzWaveLabel: 'Fala',
+      pvzEnemiesLabel: 'Wrogowie',
+      pvzPlantBtn: 'SADŹ [E]',
+      pvzPlants: {
+        sun: 'Słonecznik (50)',
+        peashooter: 'Groszek (100)',
+        repeater: 'Podwójny (175)',
+        wallnut: 'Orzech (75)',
+        shovel: 'Łopata (0)',
+      },
+      act4Badge: 'AKT 4 · WIOSKA «JOJO»',
+      act4WalkHouseObjective: 'Podejdź do domku przed sobą, gdzie czekają Sasza (z wizjerem) i Roner [E]',
+      act4WaveLabel: 'Fala',
+      act4EnemiesLeftLabel: 'Pozostało',
+      act4KillsLabel: 'Kille (nie wydają się)',
+      act4TurretsActive: 'Wieżyczki AKTYWNE',
+      act4TurretsLocked: 'Wieżyczki [100 killi]',
+      act4TurretsUnlockBtn: 'Odblokuj wieżyczki (100)',
+      act4Boss67Label: 'BOSS SASZA 67!!!!!!',
+      act4Weapons: {
+        pistol: 'Pistolet',
+        uzi: 'Uzi',
+        ak47: 'AK-47',
+        sniper: 'Snajperka',
+        rpg: 'RPG',
+        flamethrower: 'Miotacz ognia',
+      },
+      act3NightLabel: 'Noc',
+      act3DayWord: 'DZIEŃ',
+      act3NightWord: 'NOC',
+      act3FireLabel: 'Ognisko',
+      act3LogsLabel: 'Drewno',
+      act3MetalLabel: 'Metal',
+      act3BaseLevelLabel: 'Baza poz.',
+      act3MaxedLabel: 'MAKS. BAZA',
+      act3BedReadyLabel: 'Łóżko: Gotowe',
+      act3BedCooldownLabel: 'Łóżko: CD 1 noc',
+      act3BossLabel: 'BOSS WIELKI SASZA',
+      act3RonerWaveLabel: 'Fala RONER',
+      act3Night30Objective: 'NOC 30! Masz Snajperkę — pokonaj Bossa Saszę i armię RONER [LPM / E]!',
+      statNights: 'Noce',
+      statDays: 'Dni',
+      statBaseLv: 'Poz. bazy',
+      statKills: 'Kille',
+      statWave: 'Fala',
+      statCheckpoint: 'Punkt',
+      statMushrooms: 'Grzyby',
+      statMivinas: 'Miviny',
+      statClones: 'Klony',
+      statTime: 'Czas',
+      statScared: 'Oślepieni',
+      statBest: 'Rekord',
+      statBoxes: 'Pudła',
+      statPacked: 'Spakowane',
+      replayAct1: 'Zagraj Akt 1 ponownie',
+      hardcoreEndlessBtn: 'Hardcore 3 os. (Bez końca)',
+      fpEndlessBtn: '1. osoba (Bez końca)',
+      gameOverTitle: 'KONIEC GRY',
+      modeLabel: 'Tryb:',
+      caughtFamilySuffix: 'złapał cię i krzyknął:',
+      caughtNormalSuffix: 'dopadł cię i wrzasnął:',
+      hardcoreBurnoutMsg: 'KONIEC CZASU HARDCORE (2:00)! Spłonąłeś w piekle mapy!',
+      playAgainBtn: 'ZAGRAJ PONOWNIE',
+      restartHint: 'Naciśnij Enter lub Space aby zagrać ponownie',
+      settingsTitle: 'USTAWIENIA',
+      langLabel: 'Język',
+      langRu: 'Русский (RU)',
+      langEn: 'English (EN)',
+      langPl: 'Polski (PL)',
+      censorLabel: 'Cenzura',
+      censorDesc: 'Maskuje przekleństwa znakiem [***] i cenzuruje głos',
+      familyLabel: 'Tryb Rodzinny',
+      familyDesc: 'Przyjazne żarty i czyste dialogi (włącza cenzurę)',
+      hardcoreLabel: 'Tryb Hardcore',
+      hardcoreDesc: 'Szybsi wrogowie, płonące wszystkie mapy i zabójczy licznik 2:00!',
+      hardcoreActiveBadge: 'HARDCORE',
+      hardcoreTimerLabel: 'OGIEŃ',
+      hardcoreActsProgress: 'Akty w Hardcore:',
+      voidLabel: 'Tryb Pustki',
+      voidDesc: 'Ekstremalnie gęsta czarna mgła na wszystkich mapach',
+      graphicsLabel: 'Grafika',
+      graphicsLow: 'Niska',
+      graphicsMedium: 'Średnia',
+      graphicsHigh: 'Wysoka',
+      mobileModeLabel: 'Tryb mobilny',
+      mobileModeDesc: 'Przyciski ekranowe, kompaktowy HUD i blokada trybu pionowego',
+      autoAimLabel: 'Auto-Aim',
+      autoAimDesc: 'Stopniowe namierzanie wrogów z broni palnej (nie natychmiastowe)',
+      autoAimActiveBadge: 'AUTO-AIM',
+      portraitBlockTitle: 'OBRÓĆ URZĄDZENIE POZIOMO',
+      portraitBlockDesc: 'Tryb mobilny nie pozwala na grę w orientacji pionowej. Obróć ekran w poziom!',
+      act3RiddleTitle: 'ZAGADKA JACQUESA FRESCO',
+      act3RiddlePrompt: 'Na tabliczce w rogu parku widnieje: P + P = ? Wpisz poprawną liczbę:',
+      act3RiddlePlaceholder: 'Twoja odpowiedź...',
+      act3RiddleSubmit: 'Odpowiedz',
+      act3RiddleCancel: 'Zamknij',
+      act3RiddleWrong: 'Źle! Pomyśl jak Jacques Fresco...',
+      act3RiddleSolved: 'Brawo! Odpowiedź 28 zaliczona!',
+      closeSettings: 'Gotowe',
+      touchLight: 'LATARKA',
+      touchSprint: 'SPRINT',
+      touchJump: 'SKOK',
+    };
+  }
+
   if (lang === 'en') {
     return {
       titleTop: 'NIGHT FOREST',
@@ -1333,6 +1747,12 @@ export function getUiText(lang: GameLanguage) {
       modeFnafSub: 'Endless Act 2',
       modeSniperTitle: 'Sniper Is Mine!',
       modeSniperSub: 'Endless Clones',
+      modeAct3SurvivalTitle: 'Survival',
+      modeAct3SurvivalSub: 'Endless Act 3',
+      modeParkourTitle: 'Parkour',
+      modeParkourSub: 'Giant Course',
+      modePvzTitle: "Plants vs Roner's",
+      modePvzSub: 'Turret Defense',
       modeFP: '1st Person',
       modeHardcore: 'Hardcore 3rd',
       endless: 'Endless',
@@ -1349,6 +1769,12 @@ export function getUiText(lang: GameLanguage) {
         'FNAF Epta (Endless Act 2): Craft & pack batches of 20 Mivinas infinitely while hiding from blindfolded Sasha [E] and flashing RONER at windows [F]!',
       descSniper:
         'The Sniper Is Mine! (Endless Shooter): Blast waves of Sasha and RONER clones [LMB / E] with your sniper rifle and rack up 100 kills!',
+      descAct3Survival:
+        'Survival (Endless Act 3): Endless survival in Malinka Park! Gather logs & metal, upgrade your base, survive past Night 30 and reach 40 & 99 days!',
+      descParkour:
+        'Parkour: Leap across a giant sky obstacle course with moving platforms, narrow beams, bounce pads, and 4 checkpoints!',
+      descPvz:
+        "Plants vs Roner's: Plant Sunflowers, Pea Turrets, Repeaters, and Wall-Nuts [E / LMB] on the 5×8 lawn to stop 4 escalating RONER waves!",
       descFP:
         'Endless Mode (1st Person): Shine flashlight [F] at RONER_552 and sasha55k_XL and beat your best score!',
       descHardcore:
@@ -1366,6 +1792,10 @@ export function getUiText(lang: GameLanguage) {
         'WASD Move · LMB Fire · 1-6 Weapons · E Shop / Talk · F Light · Esc Pause',
       controlsHudSniper:
         'WASD Move · Shift Run · Space Jump · LMB / E Sniper Fire · Mouse Aim · Esc Pause',
+      controlsHudParkour:
+        'WASD Move · Shift Sprint · Space Jump · Mouse Look · Esc Pause',
+      controlsHudPvz:
+        'WASD Move · 1-5 Select Plant / Shovel · E / LMB Plant / Dig · Esc Pause',
       hideControls: 'Hide controls',
       showControls: 'Controls',
       mushroomName: 'Prostophilya',
@@ -1441,10 +1871,34 @@ export function getUiText(lang: GameLanguage) {
       act4VictoryTitle: 'ACT 4 COMPLETE!',
       act4VictorySub: 'Boss Sasha 67 defeated! Mivina & tea party with Sasha and Roner!',
       act4VictorySaid: 'nikitys6666, Sasha & Roner at the table:',
+      parkourVictoryTitle: 'PARKOUR COMPLETE!',
+      parkourVictorySub: 'You reached the golden trophy at the top of the sky course!',
+      parkourVictorySaid: 'nikitys6666 at the finish arch:',
+      pvzVictoryTitle: 'LAWN DEFENDED!',
+      pvzVictorySub: "All 4 waves of RONER's were stopped by your turrets!",
+      pvzVictorySaid: 'nikitys6666, master gardener:',
       replayAct2: 'Play Act 2 Again',
       replayAct3: 'Play Act 3 Again',
       replayAct4: 'Play Act 4 Again',
+      replayParkour: 'Play Parkour Again',
+      replayPvz: "Play Plants vs Roner's Again",
       act3Badge: 'ACT 3 · MALINKA PARK',
+      act3SurvivalBadge: 'SURVIVAL · ENDLESS',
+      parkourBadge: 'PARKOUR · SKY COURSE',
+      parkourCheckpointLabel: 'Checkpoint',
+      parkourProgressLabel: 'Progress',
+      pvzBadge: "PLANTS VS RONER'S",
+      pvzEnergyLabel: 'Sun Energy',
+      pvzWaveLabel: 'Wave',
+      pvzEnemiesLabel: 'Enemies',
+      pvzPlantBtn: 'PLANT [E]',
+      pvzPlants: {
+        sun: 'Sunflower (50)',
+        peashooter: 'Pea Turret (100)',
+        repeater: 'Twin Pea (175)',
+        wallnut: 'Wall-Nut (75)',
+        shovel: 'Shovel (0)',
+      },
       act4Badge: 'ACT 4 · «JOJO» VILLAGE',
       act4WalkHouseObjective: 'Walk up to the house ahead where Sasha (visor) & Roner are waiting [E]',
       act4WaveLabel: 'Wave',
@@ -1476,9 +1930,11 @@ export function getUiText(lang: GameLanguage) {
       act3RonerWaveLabel: 'RONER Wave',
       act3Night30Objective: 'NIGHT 30 FINALE! Grabbed Sniper — defeat Boss Sasha & the RONER army [LMB / E]!',
       statNights: 'Nights',
+      statDays: 'Days',
       statBaseLv: 'Base Lv.',
       statKills: 'Kills',
       statWave: 'Wave',
+      statCheckpoint: 'Checkpoint',
       statMushrooms: 'Mushrooms',
       statMivinas: 'Mivinas',
       statClones: 'Clones',
@@ -1494,16 +1950,43 @@ export function getUiText(lang: GameLanguage) {
       modeLabel: 'Mode:',
       caughtFamilySuffix: 'tagged you and yelled:',
       caughtNormalSuffix: 'caught you and screamed:',
+      hardcoreBurnoutMsg: 'HARDCORE 2:00 TIMER EXPIRED! The burning map consumed you!',
       playAgainBtn: 'PLAY AGAIN',
       restartHint: 'Press Enter or Space to play again',
       settingsTitle: 'SETTINGS',
       langLabel: 'Language',
       langRu: 'Русский (RU)',
       langEn: 'English (EN)',
+      langPl: 'Polski (PL)',
       censorLabel: 'Censorship',
       censorDesc: 'Masks profanity with [***] and bleeps in voiceover',
       familyLabel: 'Family Mode',
       familyDesc: 'Friendly memes & clean dialogue (auto-enables censorship)',
+      hardcoreLabel: 'Hardcore Mode',
+      hardcoreDesc: 'Faster enemies, all maps catch fire & lethal 2:00 timer!',
+      hardcoreActiveBadge: 'HARDCORE',
+      hardcoreTimerLabel: 'FIRE',
+      hardcoreActsProgress: 'Hardcore Acts:',
+      voidLabel: 'Void Mode',
+      voidDesc: 'Extremely thick pitch-black fog across every map',
+      graphicsLabel: 'Graphics',
+      graphicsLow: 'Low',
+      graphicsMedium: 'Medium',
+      graphicsHigh: 'High',
+      mobileModeLabel: 'Mobile Device Mode',
+      mobileModeDesc: 'On-screen buttons, compact HUD & portrait orientation lock',
+      autoAimLabel: 'Auto-Aim',
+      autoAimDesc: 'Smoothly tracks targets on firearms (gradual, not instant)',
+      autoAimActiveBadge: 'AUTO-AIM',
+      portraitBlockTitle: 'ROTATE DEVICE HORIZONTALLY',
+      portraitBlockDesc: 'Mobile Mode disables vertical orientation. Turn your screen to landscape to play!',
+      act3RiddleTitle: 'JACQUE FRESCO RIDDLE',
+      act3RiddlePrompt: 'The corner park sign asks: P + P = ? Enter the answer:',
+      act3RiddlePlaceholder: 'Your answer...',
+      act3RiddleSubmit: 'Submit',
+      act3RiddleCancel: 'Close',
+      act3RiddleWrong: 'Wrong! Think like Jacque Fresco...',
+      act3RiddleSolved: 'Correct! 28 solved!',
       closeSettings: 'Done',
       touchLight: 'LIGHT',
       touchSprint: 'SPRINT',
@@ -1541,6 +2024,12 @@ export function getUiText(lang: GameLanguage) {
     modeFnafSub: 'Бесконечный Акт 2',
     modeSniperTitle: 'Снайперка теперь моя!',
     modeSniperSub: 'Клоны Сани и RONER',
+    modeAct3SurvivalTitle: 'Выжывачь',
+    modeAct3SurvivalSub: 'Бесконечный Акт 3',
+    modeParkourTitle: 'Паркур',
+    modeParkourSub: 'Большой паркур',
+    modePvzTitle: "Ростения vs Roner's",
+    modePvzSub: 'Турели и волны',
     modeFP: '1-е лицо',
     modeHardcore: 'Хардкор 3-е',
     endless: 'Бесконечный',
@@ -1557,6 +2046,12 @@ export function getUiText(lang: GameLanguage) {
       'Фнаф Епта (Бесконечный Акт 2): Делай партии по 20 мивин бесконечно, прячься в шкаф [E] когда мигает свет и отгоняй фонариком [F] RONER от окон!',
     descSniper:
       'Снайперка теперь моя! (Бесконечный режим): Отстреливай волны клонов Сани и RONER из снайперской винтовки [ЛКМ / E]!',
+    descAct3Survival:
+      'Выжывачь (Бесконечный Акт 3): Бесконечное выживание в парке «Малинка»! Проживи 40 и 99 дней ради редких достижений!',
+    descParkour:
+      'Паркур: Огромная полоса препятствий в небе с движущимися платформами, батутами, узкими балками и 4 чекпоинтами!',
+    descPvz:
+      "Ростения против Roner's: Расставляй Подсолнухи, Горохострелы, Двойные турели и Орехи [E / ЛКМ] на газоне 5×8 и отбей 4 волны RONER!",
     descFP:
       'Бесконечный режим (1-е лицо): свети фонариком [F] на RONER_552 и sasha55k_XL и ставь рекорд!',
     descHardcore:
@@ -1574,6 +2069,10 @@ export function getUiText(lang: GameLanguage) {
       'WASD Идти · ЛКМ Огонь · 1-6 Пушки · E Покупка / Диалог · F Фонарик · Esc Пауза',
     controlsHudSniper:
       'WASD Идти · Shift Бег · Space Прыжок · ЛКМ / E Выстрел со снайперки · Мышь Прицел · Esc Пауза',
+    controlsHudParkour:
+      'WASD Идти · Shift Рывок · Space Прыжок · Мышь Камера · Esc Пауза',
+    controlsHudPvz:
+      'WASD Идти · 1-5 Выбор растения / лопаты · E / ЛКМ Посадить / Выкопать · Esc Пауза',
     hideControls: 'Скрыть управление',
     showControls: 'Управление',
     mushroomName: 'Простофиля',
@@ -1649,10 +2148,34 @@ export function getUiText(lang: GameLanguage) {
     act4VictoryTitle: 'АКТ 4 ПРОЙДЕН!',
     act4VictorySub: 'Босс Саня 67 повержен! Никита, Саша и Roner кушают мивину и пьют чай!',
     act4VictorySaid: 'nikitys6666, Саша и Roner за столом:',
+    parkourVictoryTitle: 'ПАРКУР ПРОЙДЕН!',
+    parkourVictorySub: 'Ты добрался до золотого кубка на вершине огромного паркура!',
+    parkourVictorySaid: 'nikitys6666 на финише:',
+    pvzVictoryTitle: 'ГАЗОН ЗАЩИЩЁН!',
+    pvzVictorySub: "Все 4 волны RONER's остановлены твоими турелями!",
+    pvzVictorySaid: 'nikitys6666 — грозный садовник:',
     replayAct2: 'Пройти Акт 2 ещё раз',
     replayAct3: 'Пройти Акт 3 ещё раз',
     replayAct4: 'Пройти Акт 4 ещё раз',
+    replayParkour: 'Пройти Паркур ещё раз',
+    replayPvz: "Сыграть в Ростения vs Roner's ещё раз",
     act3Badge: 'АКТ 3 · ПАРК «МАЛИНКА»',
+    act3SurvivalBadge: 'ВЫЖЫВАЧЬ · БЕСКОНЕЧНЫЙ',
+    parkourBadge: 'ПАРКУР · ПОЛОСА ПРЕПЯТСТВИЙ',
+    parkourCheckpointLabel: 'Чекпоинт',
+    parkourProgressLabel: 'Прогресс',
+    pvzBadge: "РОСТЕНИЯ ПРОТИВ RONER'S",
+    pvzEnergyLabel: 'Энергия',
+    pvzWaveLabel: 'Волна',
+    pvzEnemiesLabel: 'Враги',
+    pvzPlantBtn: 'ПОСАДИТЬ [E]',
+    pvzPlants: {
+      sun: 'Подсолнух (50)',
+      peashooter: 'Горох-турель (100)',
+      repeater: 'Двойная (175)',
+      wallnut: 'Орех-щит (75)',
+      shovel: 'Лопата (0)',
+    },
     act4Badge: 'АКТ 4 · ДЕРЕВНЯ «ДЖОДЖО»',
     act4WalkHouseObjective: 'Дойди до домика впереди, где ждут Саша (с визором) и Roner [E]',
     act4WaveLabel: 'Волна',
@@ -1684,9 +2207,11 @@ export function getUiText(lang: GameLanguage) {
     act3RonerWaveLabel: 'Волна RONER',
     act3Night30Objective: '30-Я НОЧЬ! Получена снайперка — побей Босса Саню и волну RONER [ЛКМ / E]!',
     statNights: 'Ночей',
+    statDays: 'Дней',
     statBaseLv: 'Ур. базы',
     statKills: 'Килы',
     statWave: 'Волна',
+    statCheckpoint: 'Точка',
     statMushrooms: 'Грибы',
     statMivinas: 'Мивины',
     statClones: 'Клоны',
@@ -1702,16 +2227,43 @@ export function getUiText(lang: GameLanguage) {
     modeLabel: 'Режим:',
     caughtFamilySuffix: 'осалил тебя и закричал:',
     caughtNormalSuffix: 'догнал тебя и закричал:',
+    hardcoreBurnoutMsg: 'СМЕРТЕЛЬНЫЙ ТАЙМЕР ХАРДКОРА (2:00) ИСТЁК! Карта сгорела вместе с тобой!',
     playAgainBtn: 'ИГРАТЬ СНОВА',
     restartHint: 'Нажми Enter или Space чтобы начать заново',
     settingsTitle: 'НАСТРОЙКИ',
     langLabel: 'Язык',
     langRu: 'Русский (RU)',
     langEn: 'English (EN)',
+    langPl: 'Polski (PL)',
     censorLabel: 'Цензура',
     censorDesc: 'Скрывает мат под [***] и запикивает в озвучке',
     familyLabel: 'Семейный режим',
     familyDesc: 'Добрые шутки и чистые реплики (включает цензуру)',
+    hardcoreLabel: 'Режим Хардкор',
+    hardcoreDesc: 'Враги быстрее, все карты горят в огне + смертельный таймер 2:00!',
+    hardcoreActiveBadge: 'ХАРДКОР',
+    hardcoreTimerLabel: 'ОГОНЬ',
+    hardcoreActsProgress: 'Акты в Хардкоре:',
+    voidLabel: 'Режим пустоты',
+    voidDesc: 'ОЧЕНЬ густой чёрный туман на всех картах',
+    graphicsLabel: 'Графика',
+    graphicsLow: 'Низкая',
+    graphicsMedium: 'Средняя',
+    graphicsHigh: 'Высокая',
+    mobileModeLabel: 'Режим для мобильных',
+    mobileModeDesc: 'Кнопки на экране, сжатый интерфейс и запрет вертикального экрана',
+    autoAimLabel: 'Auto-Aim',
+    autoAimDesc: 'Плавная авто-наводка на врагов для огнестрела (не моментальная)',
+    autoAimActiveBadge: 'AUTO-AIM',
+    portraitBlockTitle: 'ПОВЕРНИ УСТРОЙСТВО ГОРИЗОНТАЛЬНО',
+    portraitBlockDesc: 'В мобильном режиме нельзя играть в вертикальном положении. Переверни экран горизонтально!',
+    act3RiddleTitle: 'ЗАГАДКА ОТ ЖАКА ФРЕСКО',
+    act3RiddlePrompt: 'На табличке в углу парка написано: P + P = ? Введи ответ:',
+    act3RiddlePlaceholder: 'Введи число...',
+    act3RiddleSubmit: 'Ответить',
+    act3RiddleCancel: 'Закрыть',
+    act3RiddleWrong: 'Неверно! Вспомни классику от Жака Фреско...',
+    act3RiddleSolved: 'Верно! Ответ 28 принят!',
     closeSettings: 'Готово',
     touchLight: 'ФОНАРЬ',
     touchSprint: 'РЫВОК',

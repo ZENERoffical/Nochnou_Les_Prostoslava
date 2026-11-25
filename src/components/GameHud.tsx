@@ -6,19 +6,22 @@ import {
   ChevronUp,
   Crosshair,
   Factory,
+  Flame,
   Flashlight,
+  Footprints,
   Heart,
   Home,
   KeyRound,
   Pause,
   Shield,
+  Sprout,
   Trees,
   Volume2,
   VolumeX,
   Zap,
 } from 'lucide-react';
 import { getUiText } from '../game/localization';
-import { Act4WeaponId, HudSnapshot } from '../types/game';
+import { Act4WeaponId, HudSnapshot, PvzPlantType } from '../types/game';
 
 interface GameHudProps {
   hud: HudSnapshot;
@@ -33,6 +36,7 @@ interface GameHudProps {
   onInteract: () => void;
   onSelectAct4Weapon: (weapon: Act4WeaponId) => void;
   onUnlockAct4Turrets: () => void;
+  onSelectPvzPlant: (kind: PvzPlantType) => void;
 }
 
 function formatTime(sec: number): string {
@@ -54,6 +58,7 @@ export const GameHud: React.FC<GameHudProps> = ({
   onInteract,
   onSelectAct4Weapon,
   onUnlockAct4Turrets,
+  onSelectPvzPlant,
 }) => {
   const [hintsOpen, setHintsOpen] = useState(true);
   const t = getUiText(hud.settings.language);
@@ -64,11 +69,16 @@ export const GameHud: React.FC<GameHudProps> = ({
       hud.mode === 'sniper_minigame' ||
       hud.mode === 'story_act4');
   const isAct2 = hud.mode === 'story_act2';
-  const isAct3 = hud.mode === 'story_act3';
+  const isAct3Survival = hud.mode === 'act3_survival';
+  const isAct3 = hud.mode === 'story_act3' || isAct3Survival;
   const isAct4 = hud.mode === 'story_act4';
   const isFnaf = hud.mode === 'fnaf_epta';
   const isFactoryMode = isAct2 || isFnaf;
   const isSniper = hud.mode === 'sniper_minigame';
+  const isParkour = hud.mode === 'parkour_minigame';
+  const isPvz = hud.mode === 'plants_vs_roners';
+  const isMobile = hud.settings.mobileMode;
+
   const showSniperCrosshair =
     isSniper ||
     (isAct3 && hud.act3HasSniper) ||
@@ -79,7 +89,9 @@ export const GameHud: React.FC<GameHudProps> = ({
     isFactoryMode ||
     isSniper ||
     isAct3 ||
-    isAct4;
+    isAct4 ||
+    isParkour ||
+    isPvz;
   const storyGoalMet =
     hud.targetMushrooms !== null && hud.mushrooms >= hud.targetMushrooms;
 
@@ -92,8 +104,22 @@ export const GameHud: React.FC<GameHudProps> = ({
     { id: 'flamethrower', keyNum: 6, req: 50 },
   ];
 
+  const pvzPlantSlots: Array<{ id: PvzPlantType; keyNum: number }> = [
+    { id: 'sun', keyNum: 1 },
+    { id: 'peashooter', keyNum: 2 },
+    { id: 'repeater', keyNum: 3 },
+    { id: 'wallnut', keyNum: 4 },
+    { id: 'shovel', keyNum: 5 },
+  ];
+
+  const hideFlashlight = isSniper || isPvz;
+
   return (
-    <div className="pointer-events-none fixed inset-0 z-30 flex flex-col justify-between p-3 sm:p-5">
+    <div
+      className={`pointer-events-none fixed inset-0 z-30 flex flex-col justify-between ${
+        isMobile ? 'p-1.5 sm:p-2.5' : 'p-3 sm:p-5'
+      }`}
+    >
       {/* Subtle First-Person Aim Reticle / Sniper Crosshair + Interact Prompt */}
       {isFP && hud.phase === 'playing' && (
         <div className="pointer-events-none fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
@@ -109,20 +135,25 @@ export const GameHud: React.FC<GameHudProps> = ({
                   />
                 </div>
               )}
+              {hud.settings.autoAim && (
+                <div className="absolute -top-5 whitespace-nowrap rounded border border-lime-400/60 bg-lime-950/90 px-1.5 py-0.5 text-[9px] font-black text-lime-200">
+                  {t.autoAimActiveBadge}
+                </div>
+              )}
             </div>
           ) : (
             <div
               className={`h-2.5 w-2.5 rounded-full border ${
                 hud.interactPrompt
                   ? 'border-amber-300 bg-amber-400 scale-125'
-                  : hud.flashlightOn
+                  : hud.flashlightOn && !hideFlashlight
                     ? 'border-amber-200/80 bg-amber-300/60'
                     : 'border-white/40 bg-white/25'
               }`}
             />
           )}
-          {(isFactoryMode || isAct3 || isAct4) && hud.interactPrompt && (
-            <div className="mt-4 whitespace-nowrap rounded-lg border border-amber-400/70 bg-[#0a1319]/92 px-3.5 py-1.5 text-xs sm:text-sm font-black text-amber-200 shadow-xl">
+          {(isFactoryMode || isAct3 || isAct4 || isPvz) && hud.interactPrompt && (
+            <div className="mt-4 whitespace-nowrap rounded-lg border border-amber-400/70 bg-[#0a1319]/92 px-3 py-1 text-xs font-black text-amber-200 shadow-xl">
               {hud.interactPrompt}
             </div>
           )}
@@ -130,13 +161,13 @@ export const GameHud: React.FC<GameHudProps> = ({
       )}
 
       {/* Top Perimeter Clusters */}
-      <div className="flex items-start justify-between gap-3">
-        {/* Top-Left: Factory Board / Sniper Board / Mushroom Counter */}
+      <div className="flex items-start justify-between gap-2 sm:gap-3">
+        {/* Top-Left Mode Status Board */}
         {isFactoryMode ? (
           <div
-            className={`flex flex-col gap-1.5 rounded-xl border bg-[#0a1319]/92 px-3.5 py-2.5 shadow-lg max-w-md ${
-              isFnaf ? 'border-orange-400/45' : 'border-sky-400/40'
-            }`}
+            className={`flex flex-col gap-1 rounded-xl border bg-[#0a1319]/92 shadow-lg max-w-md ${
+              isMobile ? 'px-2.5 py-1.5 text-[11px]' : 'px-3.5 py-2.5'
+            } ${isFnaf ? 'border-orange-400/45' : 'border-sky-400/40'}`}
           >
             <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider">
               <Factory
@@ -161,7 +192,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 )
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-3 text-xs font-extrabold tabular-nums">
+            <div className="flex flex-wrap items-center gap-2.5 text-xs font-extrabold tabular-nums">
               <span className="text-amber-300">
                 {t.act2SeasonedLabel}: {hud.noodlesSeasoned}/{hud.noodlesTarget}
               </span>
@@ -193,41 +224,55 @@ export const GameHud: React.FC<GameHudProps> = ({
                 </span>
               </div>
             )}
-            <div className="text-[11px] font-bold text-emerald-200/90">
-              {isFnaf
-                ? hud.act2Stage === 'packaging'
-                  ? t.act2StagePackaging
-                  : t.fnafStageLoop
-                : hud.act2Stage === 'corridor'
-                  ? t.act2StageCorridor
-                  : hud.act2Stage === 'corridor_key'
-                    ? t.act2StageCorridorKey
-                    : hud.act2Stage === 'packaging'
-                      ? t.act2StagePackaging
-                      : t.act2StageConveyor}
-            </div>
+            {!isMobile && (
+              <div className="text-[11px] font-bold text-emerald-200/90">
+                {isFnaf
+                  ? hud.act2Stage === 'packaging'
+                    ? t.act2StagePackaging
+                    : t.fnafStageLoop
+                  : hud.act2Stage === 'corridor'
+                    ? t.act2StageCorridor
+                    : hud.act2Stage === 'corridor_key'
+                      ? t.act2StageCorridorKey
+                      : hud.act2Stage === 'packaging'
+                        ? t.act2StagePackaging
+                        : t.act2StageConveyor}
+              </div>
+            )}
           </div>
         ) : isAct3 ? (
-          <div className="flex flex-col gap-1.5 rounded-xl border border-pink-400/45 bg-[#0a1319]/92 px-3.5 py-2.5 shadow-lg max-w-md">
+          <div
+            className={`flex flex-col gap-1 rounded-xl border bg-[#0a1319]/92 shadow-lg max-w-md ${
+              isAct3Survival ? 'border-teal-400/45' : 'border-pink-400/45'
+            } ${isMobile ? 'px-2.5 py-1.5' : 'px-3.5 py-2.5'}`}
+          >
             <div className="flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-wider">
-              <Trees className="h-3.5 w-3.5 text-pink-300" />
-              <span className="text-pink-200">{t.act3Badge}</span>
+              <Trees
+                className={`h-3.5 w-3.5 ${isAct3Survival ? 'text-teal-300' : 'text-pink-300'}`}
+              />
+              <span className={isAct3Survival ? 'text-teal-200' : 'text-pink-200'}>
+                {isAct3Survival ? t.act3SurvivalBadge : t.act3Badge}
+              </span>
               <span className="text-slate-300/80 tabular-nums border-l border-white/15 pl-2">
                 {formatTime(hud.elapsedSeconds)}
               </span>
               <span className="ml-auto flex items-center gap-1 rounded border border-amber-400/45 bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-black tabular-nums text-amber-200">
-                {t.act3NightLabel} {hud.act3Night}/{hud.act3MaxNights} ·{' '}
-                {hud.act3IsNight ? t.act3NightWord : t.act3DayWord}
-                {hud.act3Night < hud.act3MaxNights && (
-                  <span> · {formatTime(hud.act3PhaseSecondsLeft)}</span>
-                )}
+                {t.act3NightLabel}{' '}
+                {hud.act3MaxNights !== null
+                  ? `${hud.act3Night}/${hud.act3MaxNights}`
+                  : hud.act3Night}{' '}
+                · {hud.act3IsNight ? t.act3NightWord : t.act3DayWord}
+                {hud.act3BossHp <= 0 &&
+                  (hud.act3MaxNights === null || hud.act3Night < hud.act3MaxNights) && (
+                    <span> · {formatTime(hud.act3PhaseSecondsLeft)}</span>
+                  )}
               </span>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 text-xs font-extrabold tabular-nums">
+            <div className="flex flex-wrap items-center gap-2.5 text-xs font-extrabold tabular-nums">
               <div className="flex items-center gap-1.5">
                 <span className="text-orange-300">{t.act3FireLabel}:</span>
-                <div className="h-2 w-16 overflow-hidden rounded-full bg-black/70">
+                <div className="h-2 w-14 overflow-hidden rounded-full bg-black/70">
                   <div
                     className={`h-full transition-[width] duration-75 ${
                       hud.act3FireFuel > 35 ? 'bg-orange-400' : 'bg-red-500'
@@ -255,22 +300,23 @@ export const GameHud: React.FC<GameHudProps> = ({
                     ? `${hud.act3CrusherMetal}/${hud.act3NextUpgradeCost}`
                     : t.act3MaxedLabel}
                 </span>
-                {hud.act3BaseLevel >= 4 && hud.act3Night < hud.act3MaxNights && (
-                  <span
-                    className={
-                      hud.act3BedCooldownNights > 0
-                        ? 'text-rose-300'
-                        : 'text-emerald-300'
-                    }
-                  >
-                    ·{' '}
-                    {hud.act3BedCooldownNights > 0
-                      ? t.act3BedCooldownLabel
-                      : `${t.act3BedReadyLabel} (-${
-                          hud.act3BaseLevel >= 6 ? 3 : hud.act3BaseLevel === 5 ? 2 : 1
-                        })`}
-                  </span>
-                )}
+                {hud.act3BaseLevel >= 4 &&
+                  (hud.act3MaxNights === null || hud.act3Night < hud.act3MaxNights) && (
+                    <span
+                      className={
+                        hud.act3BedCooldownNights > 0
+                          ? 'text-rose-300'
+                          : 'text-emerald-300'
+                      }
+                    >
+                      ·{' '}
+                      {hud.act3BedCooldownNights > 0
+                        ? t.act3BedCooldownLabel
+                        : `${t.act3BedReadyLabel} (-${
+                            hud.act3BaseLevel >= 6 ? 3 : hud.act3BaseLevel === 5 ? 2 : 1
+                          })`}
+                    </span>
+                  )}
               </div>
               <div className="flex items-center gap-1">
                 {Array.from({ length: hud.act3MaxHp }).map((_, idx) => (
@@ -286,7 +332,7 @@ export const GameHud: React.FC<GameHudProps> = ({
               </div>
             </div>
 
-            {hud.act3Night >= 30 && (
+            {(hud.act3BossHp > 0 || (hud.mode === 'story_act3' && hud.act3Night >= 30)) && (
               <div className="mt-0.5 rounded-lg border border-rose-500/60 bg-rose-950/60 px-2.5 py-1.5">
                 <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-rose-200">
                   <span>{t.act3BossLabel}</span>
@@ -305,14 +351,20 @@ export const GameHud: React.FC<GameHudProps> = ({
                     }}
                   />
                 </div>
-                <div className="mt-1 text-[10px] font-bold text-lime-300">
-                  {t.act3Night30Objective}
-                </div>
+                {!isMobile && (
+                  <div className="mt-1 text-[10px] font-bold text-lime-300">
+                    {t.act3Night30Objective}
+                  </div>
+                )}
               </div>
             )}
           </div>
         ) : isAct4 ? (
-          <div className="flex flex-col gap-1.5 rounded-xl border border-purple-400/45 bg-[#0a1319]/92 px-3.5 py-2.5 shadow-lg max-w-md">
+          <div
+            className={`flex flex-col gap-1 rounded-xl border border-purple-400/45 bg-[#0a1319]/92 shadow-lg max-w-md ${
+              isMobile ? 'px-2.5 py-1.5' : 'px-3.5 py-2.5'
+            }`}
+          >
             <div className="flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-wider">
               <Crosshair className="h-3.5 w-3.5 text-purple-300" />
               <span className="text-purple-200">{t.act4Badge}</span>
@@ -372,8 +424,66 @@ export const GameHud: React.FC<GameHudProps> = ({
               </div>
             )}
           </div>
+        ) : isParkour ? (
+          <div
+            className={`flex flex-col gap-1.5 rounded-xl border border-cyan-400/45 bg-[#0a1319]/92 shadow-lg min-w-[210px] ${
+              isMobile ? 'px-2.5 py-1.5' : 'px-3.5 py-2.5'
+            }`}
+          >
+            <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider">
+              <Footprints className="h-3.5 w-3.5 text-cyan-300" />
+              <span className="text-cyan-200">{t.parkourBadge}</span>
+              <span className="ml-auto text-slate-300/80 tabular-nums border-l border-white/15 pl-2">
+                {formatTime(hud.elapsedSeconds)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-3 text-xs font-extrabold tabular-nums">
+              <span className="text-amber-300">
+                {t.parkourCheckpointLabel}: {hud.parkourCheckpoint}/
+                {hud.parkourTotalCheckpoints}
+              </span>
+              <span className="text-emerald-300">
+                {t.parkourProgressLabel}: {hud.parkourProgress}%
+              </span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-black/60">
+              <div
+                className="h-full bg-cyan-400 transition-[width] duration-100"
+                style={{ width: `${hud.parkourProgress}%` }}
+              />
+            </div>
+          </div>
+        ) : isPvz ? (
+          <div
+            className={`flex flex-col gap-1 rounded-xl border border-green-400/45 bg-[#0a1319]/92 shadow-lg ${
+              isMobile ? 'px-2.5 py-1.5' : 'px-3.5 py-2.5'
+            }`}
+          >
+            <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider">
+              <Sprout className="h-3.5 w-3.5 text-green-300" />
+              <span className="text-green-200">{t.pvzBadge}</span>
+              <span className="ml-auto text-slate-300/80 tabular-nums border-l border-white/15 pl-2">
+                {formatTime(hud.elapsedSeconds)}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-xs font-extrabold tabular-nums">
+              <span className="text-yellow-300">
+                {t.pvzEnergyLabel}: {hud.pvzEnergy}
+              </span>
+              <span className="text-emerald-300">
+                {t.pvzWaveLabel}: {hud.pvzWave}/{hud.pvzMaxWaves}
+              </span>
+              <span className="text-rose-300">
+                {t.pvzEnemiesLabel}: {hud.pvzEnemiesRemaining}
+              </span>
+            </div>
+          </div>
         ) : isSniper ? (
-          <div className="flex flex-col gap-1.5 rounded-xl border border-lime-400/45 bg-[#0a1319]/92 px-3.5 py-2.5 shadow-lg">
+          <div
+            className={`flex flex-col gap-1.5 rounded-xl border border-lime-400/45 bg-[#0a1319]/92 shadow-lg ${
+              isMobile ? 'px-2.5 py-1.5' : 'px-3.5 py-2.5'
+            }`}
+          >
             <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider">
               <Crosshair className="h-3.5 w-3.5 text-lime-300" />
               <span className="text-lime-200">{t.sniperBadge}</span>
@@ -386,7 +496,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 <div className="text-[10px] font-bold uppercase text-slate-400">
                   {t.sniperClonesLabel}
                 </div>
-                <div className="text-2xl font-black tabular-nums text-white leading-none">
+                <div className="text-xl sm:text-2xl font-black tabular-nums text-white leading-none">
                   {hud.clonesKilled}
                 </div>
               </div>
@@ -394,7 +504,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 <div className="text-[10px] font-bold uppercase text-slate-400">
                   {t.sniperWaveLabel}
                 </div>
-                <div className="text-xl font-black tabular-nums text-amber-300 leading-none">
+                <div className="text-lg sm:text-xl font-black tabular-nums text-amber-300 leading-none">
                   #{hud.sniperWave}
                 </div>
               </div>
@@ -402,7 +512,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 <div className="text-[10px] font-bold uppercase text-slate-400">
                   {t.record}
                 </div>
-                <div className="text-xl font-black tabular-nums text-lime-300 leading-none">
+                <div className="text-lg sm:text-xl font-black tabular-nums text-lime-300 leading-none">
                   {hud.bestSniperKills}
                 </div>
               </div>
@@ -424,11 +534,17 @@ export const GameHud: React.FC<GameHudProps> = ({
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-3 rounded-xl border border-emerald-500/35 bg-[#0a1319]/92 px-3.5 py-2.5 shadow-lg">
+          <div
+            className={`flex items-center gap-2.5 rounded-xl border border-emerald-500/35 bg-[#0a1319]/92 shadow-lg ${
+              isMobile ? 'px-2.5 py-1.5' : 'px-3.5 py-2.5'
+            }`}
+          >
             <img
               src="/assets/aistudio/image_690f5407.png"
               alt={t.mushroomName}
-              className="h-11 w-11 rounded-lg border border-amber-400/50 object-cover shrink-0"
+              className={`${
+                isMobile ? 'h-9 w-9' : 'h-11 w-11'
+              } rounded-lg border border-amber-400/50 object-cover shrink-0`}
             />
             <div>
               <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider">
@@ -450,7 +566,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 </span>
               </div>
               <div className="flex items-baseline gap-2.5 mt-0.5">
-                <span className="text-2xl font-black tabular-nums text-white leading-none">
+                <span className="text-xl sm:text-2xl font-black tabular-nums text-white leading-none">
                   {hud.mushrooms}
                   {hud.targetMushrooms !== null && (
                     <span className="text-sm font-bold text-amber-300">
@@ -481,17 +597,39 @@ export const GameHud: React.FC<GameHudProps> = ({
           </div>
         )}
 
-        {/* Center Event Banner */}
-        {hud.eventBanner && (
-          <div className="hidden md:flex items-center gap-2 rounded-lg border border-amber-400/50 bg-[#131120]/94 px-4 py-2 text-sm font-extrabold text-amber-200 shadow-lg">
-            <span>{hud.eventBanner}</span>
-          </div>
-        )}
+        {/* Center Event Banner + Hardcore Fire Timer */}
+        <div className="flex flex-col items-center gap-1.5">
+          {hud.hardcoreTimeLeft !== null && (
+            <div
+              className={`flex items-center gap-1.5 rounded-lg border-2 px-3 py-1 text-xs font-black tabular-nums shadow-lg ${
+                hud.hardcoreTimeLeft <= 30
+                  ? 'border-red-500 bg-red-950/95 text-red-200 animate-pulse'
+                  : 'border-orange-500/80 bg-[#260b09]/95 text-orange-200'
+              }`}
+            >
+              <Flame className="h-4 w-4 text-orange-400" />
+              <span>{t.hardcoreActiveBadge}</span>
+              <span>
+                · {t.hardcoreTimerLabel}: {formatTime(hud.hardcoreTimeLeft)}
+              </span>
+            </div>
+          )}
 
-        {/* Top-Right: Stamina + Battery (in Story), Flashlight Toggle, Mute & Pause */}
-        <div className="flex items-center gap-2">
-          <div className="rounded-xl border border-emerald-500/35 bg-[#0a1319]/92 px-3.5 py-2 shadow-lg min-w-[156px]">
-            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider mb-1">
+          {hud.eventBanner && (
+            <div className="hidden md:flex items-center gap-2 rounded-lg border border-amber-400/50 bg-[#131120]/94 px-4 py-1.5 text-xs sm:text-sm font-extrabold text-amber-200 shadow-lg">
+              <span>{hud.eventBanner}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Top-Right: Stamina + Battery, Flashlight Toggle, Mute, Pause & Menu */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <div
+            className={`rounded-xl border border-emerald-500/35 bg-[#0a1319]/92 shadow-lg ${
+              isMobile ? 'px-2.5 py-1.5 min-w-[118px]' : 'px-3.5 py-2 min-w-[156px]'
+            }`}
+          >
+            <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-bold uppercase tracking-wider mb-1">
               <span className="flex items-center gap-1 text-emerald-300">
                 <Zap className="h-3.5 w-3.5 text-yellow-400" />
                 {hud.speedBoostActive ? t.panther : t.stamina}
@@ -512,8 +650,8 @@ export const GameHud: React.FC<GameHudProps> = ({
             </div>
 
             {hud.hasBatteryLimit && (
-              <div className="mt-2">
-                <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider mb-1">
+              <div className="mt-1.5">
+                <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-bold uppercase tracking-wider mb-1">
                   <span className="flex items-center gap-1 text-sky-300">
                     <BatteryCharging className="h-3.5 w-3.5 text-amber-300" />
                     {t.battery}
@@ -532,7 +670,7 @@ export const GameHud: React.FC<GameHudProps> = ({
             )}
 
             {isDanger && (
-              <div className="mt-1.5 flex items-center gap-1 text-[11px] font-extrabold text-rose-400 tabular-nums">
+              <div className="mt-1 flex items-center gap-1 text-[10px] sm:text-[11px] font-extrabold text-rose-400 tabular-nums">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                 {t.dangerNearby} {hud.nearestChaserDist}
                 {hud.settings.language === 'en' ? 'm' : 'м'}
@@ -540,19 +678,23 @@ export const GameHud: React.FC<GameHudProps> = ({
             )}
           </div>
 
-          {!isSniper && (
+          {!hideFlashlight && (
             <button
               type="button"
               onClick={onToggleFlashlight}
               aria-label="Flashlight"
-              className={`pointer-events-auto flex h-11 px-3 items-center gap-1.5 rounded-xl border transition-colors cursor-pointer ${
+              className={`pointer-events-auto flex px-2.5 items-center gap-1 rounded-xl border transition-colors cursor-pointer ${
+                isMobile ? 'h-9' : 'h-11 px-3'
+              } ${
                 hud.flashlightOn
                   ? 'border-amber-400/60 bg-amber-500/20 text-amber-200 hover:bg-amber-500/30'
                   : 'border-white/15 bg-[#0a1319]/92 text-slate-400 hover:bg-[#152430]'
               }`}
             >
               <Flashlight className="h-4 w-4" />
-              <span className="hidden sm:inline text-xs font-extrabold">F</span>
+              {!isMobile && (
+                <span className="hidden sm:inline text-xs font-extrabold">F</span>
+              )}
             </button>
           )}
 
@@ -560,12 +702,14 @@ export const GameHud: React.FC<GameHudProps> = ({
             type="button"
             onClick={onToggleMute}
             aria-label={muted ? t.unmuteLabel : t.muteLabel}
-            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-xl border border-white/15 bg-[#0a1319]/92 text-slate-100 hover:bg-[#152430] transition-colors cursor-pointer"
+            className={`pointer-events-auto flex items-center justify-center rounded-xl border border-white/15 bg-[#0a1319]/92 text-slate-100 hover:bg-[#152430] transition-colors cursor-pointer ${
+              isMobile ? 'h-9 w-9' : 'h-11 w-11'
+            }`}
           >
             {muted ? (
-              <VolumeX className="h-5 w-5 text-rose-400" />
+              <VolumeX className="h-4 w-4 sm:h-5 sm:w-5 text-rose-400" />
             ) : (
-              <Volume2 className="h-5 w-5 text-emerald-300" />
+              <Volume2 className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-300" />
             )}
           </button>
 
@@ -574,9 +718,11 @@ export const GameHud: React.FC<GameHudProps> = ({
             onClick={onPause}
             aria-label={t.pauseTitle}
             title="Esc"
-            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-xl border border-white/15 bg-[#0a1319]/92 text-slate-100 hover:bg-[#152430] transition-colors cursor-pointer"
+            className={`pointer-events-auto flex items-center justify-center rounded-xl border border-white/15 bg-[#0a1319]/92 text-slate-100 hover:bg-[#152430] transition-colors cursor-pointer ${
+              isMobile ? 'h-9 w-9' : 'h-11 w-11'
+            }`}
           >
-            <Pause className="h-5 w-5" />
+            <Pause className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
 
           <button
@@ -584,9 +730,11 @@ export const GameHud: React.FC<GameHudProps> = ({
             onClick={onExitToMenu}
             aria-label={t.menuBtn}
             title={t.menuBtn}
-            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-xl border border-white/15 bg-[#0a1319]/92 text-slate-100 hover:bg-[#152430] transition-colors cursor-pointer"
+            className={`pointer-events-auto flex items-center justify-center rounded-xl border border-white/15 bg-[#0a1319]/92 text-slate-100 hover:bg-[#152430] transition-colors cursor-pointer ${
+              isMobile ? 'h-9 w-9' : 'h-11 w-11'
+            }`}
           >
-            <Home className="h-5 w-5 text-amber-300" />
+            <Home className="h-4 w-4 sm:h-5 sm:w-5 text-amber-300" />
           </button>
         </div>
       </div>
@@ -650,9 +798,14 @@ export const GameHud: React.FC<GameHudProps> = ({
       )}
 
       {/* Bottom Controls Dock & Mobile Touch Controls */}
-      <div className="flex items-end justify-between gap-3">
-        <div className="pointer-events-auto flex sm:hidden items-center gap-1.5 bg-[#0a1319]/90 p-2 rounded-2xl border border-white/15">
-          <div className="grid grid-cols-3 gap-1 w-28 h-28">
+      <div className="flex items-end justify-between gap-2 sm:gap-3">
+        {/* Left D-Pad (shown on <sm or whenever mobileMode is enabled) */}
+        <div
+          className={`pointer-events-auto ${
+            isMobile ? 'flex' : 'flex sm:hidden'
+          } items-center gap-1 bg-[#0a1319]/92 p-1.5 rounded-2xl border border-white/15`}
+        >
+          <div className={`grid grid-cols-3 gap-1 ${isMobile ? 'w-24 h-24' : 'w-28 h-28'}`}>
             <div />
             <button
               type="button"
@@ -697,9 +850,10 @@ export const GameHud: React.FC<GameHudProps> = ({
           </div>
         </div>
 
-        <div className="hidden sm:flex flex-col items-center mx-auto gap-1.5">
+        {/* Center Weapon / PvZ Plant Bar + Desktop Keyboard Hints */}
+        <div className="flex flex-col items-center mx-auto gap-1.5">
           {isAct4 && hud.act4Stage === 'battle' && (
-            <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-1.5 rounded-xl border border-purple-400/40 bg-[#0a1319]/94 p-1.5 shadow-xl">
+            <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-1 rounded-xl border border-purple-400/40 bg-[#0a1319]/94 p-1.5 shadow-xl">
               {act4WeaponSlots.map((slot) => {
                 const unlocked =
                   hud.act4UnlockedWeapons.includes(slot.id) || hud.act4Kills >= slot.req;
@@ -709,7 +863,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                     key={slot.id}
                     type="button"
                     onClick={() => onSelectAct4Weapon(slot.id)}
-                    className={`rounded-lg border px-2.5 py-1 text-[11px] font-black transition-all cursor-pointer whitespace-nowrap ${
+                    className={`rounded-lg border px-2 py-1 text-[10px] sm:text-[11px] font-black transition-all cursor-pointer whitespace-nowrap ${
                       active
                         ? 'border-amber-300 bg-amber-400 text-slate-950 shadow'
                         : unlocked
@@ -731,7 +885,7 @@ export const GameHud: React.FC<GameHudProps> = ({
               <button
                 type="button"
                 onClick={onUnlockAct4Turrets}
-                className={`rounded-lg border px-2.5 py-1 text-[11px] font-black transition-all cursor-pointer whitespace-nowrap ${
+                className={`rounded-lg border px-2 py-1 text-[10px] sm:text-[11px] font-black transition-all cursor-pointer whitespace-nowrap ${
                   hud.act4HasTurrets
                     ? 'border-cyan-300 bg-cyan-500/30 text-cyan-100'
                     : hud.act4Kills >= 100
@@ -748,55 +902,97 @@ export const GameHud: React.FC<GameHudProps> = ({
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={() => setHintsOpen((v) => !v)}
-            className="pointer-events-auto mb-0.5 flex items-center gap-1 rounded-t-lg border border-b-0 border-white/15 bg-[#0a1319]/90 px-2.5 py-0.5 text-[11px] font-semibold text-slate-300 hover:text-white cursor-pointer"
-          >
-            {hintsOpen ? (
-              <>
-                <ChevronDown className="h-3 w-3" /> {t.hideControls}
-              </>
-            ) : (
-              <>
-                <ChevronUp className="h-3 w-3" /> {t.showControls}
-              </>
-            )}
-          </button>
-          {hintsOpen && (
-            <div className="rounded-xl border border-white/15 bg-[#0a1319]/92 px-4 py-1.5 text-xs font-medium text-slate-200 shadow-lg">
-              {isAct4
-                ? t.controlsHudAct4
-                : isAct3
-                  ? t.controlsHudAct3
-                  : isFactoryMode
-                    ? t.controlsHudAct2
-                    : isSniper
-                      ? t.controlsHudSniper
-                      : t.controlsHud}
+          {isPvz && hud.phase === 'playing' && (
+            <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-1 rounded-xl border border-green-400/45 bg-[#0a1319]/94 p-1.5 shadow-xl">
+              {pvzPlantSlots.map((slot) => {
+                const active = hud.pvzSelectedPlant === slot.id;
+                return (
+                  <button
+                    key={slot.id}
+                    type="button"
+                    onClick={() => onSelectPvzPlant(slot.id)}
+                    className={`rounded-lg border px-2 py-1 text-[10px] sm:text-[11px] font-black transition-all cursor-pointer whitespace-nowrap ${
+                      active
+                        ? 'border-yellow-300 bg-green-400 text-slate-950 shadow'
+                        : 'border-white/15 bg-white/5 text-slate-200 hover:bg-white/10'
+                    }`}
+                  >
+                    <span className="mr-1 opacity-75">[{slot.keyNum}]</span>
+                    {t.pvzPlants[slot.id]}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {!isMobile && (
+            <div className="hidden sm:flex flex-col items-center">
+              <button
+                type="button"
+                onClick={() => setHintsOpen((v) => !v)}
+                className="pointer-events-auto mb-0.5 flex items-center gap-1 rounded-t-lg border border-b-0 border-white/15 bg-[#0a1319]/90 px-2.5 py-0.5 text-[11px] font-semibold text-slate-300 hover:text-white cursor-pointer"
+              >
+                {hintsOpen ? (
+                  <>
+                    <ChevronDown className="h-3 w-3" /> {t.hideControls}
+                  </>
+                ) : (
+                  <>
+                    <ChevronUp className="h-3 w-3" /> {t.showControls}
+                  </>
+                )}
+              </button>
+              {hintsOpen && (
+                <div className="rounded-xl border border-white/15 bg-[#0a1319]/92 px-4 py-1.5 text-xs font-medium text-slate-200 shadow-lg">
+                  {isAct4
+                    ? t.controlsHudAct4
+                    : isAct3
+                      ? t.controlsHudAct3
+                      : isFactoryMode
+                        ? t.controlsHudAct2
+                        : isSniper
+                          ? t.controlsHudSniper
+                          : isParkour
+                            ? t.controlsHudParkour
+                            : isPvz
+                              ? t.controlsHudPvz
+                              : t.controlsHud}
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        <div className="pointer-events-auto flex sm:hidden flex-col gap-2">
-          {(isFactoryMode || isSniper || isAct3 || isAct4) && (
+        {/* Right Action Buttons (shown on <sm or whenever mobileMode is enabled) */}
+        <div
+          className={`pointer-events-auto ${
+            isMobile ? 'grid grid-cols-2 gap-1.5' : 'flex sm:hidden flex-col gap-2'
+          }`}
+        >
+          {(isFactoryMode || isSniper || isAct3 || isAct4 || isPvz) && (
             <button
               type="button"
               onPointerDown={onInteract}
-              className={`rounded-xl border px-4 py-2.5 text-xs font-black ${
+              className={`rounded-xl border px-3 py-2 text-[11px] font-black ${
                 showSniperCrosshair
                   ? 'border-lime-300/65 bg-lime-500/35 text-lime-100'
-                  : 'border-orange-300/55 bg-orange-500/35 text-orange-100'
+                  : isPvz
+                    ? 'border-green-300/65 bg-green-500/35 text-green-100'
+                    : 'border-orange-300/55 bg-orange-500/35 text-orange-100'
               }`}
             >
-              {showSniperCrosshair ? t.sniperTouchFire : t.act2TouchInteract}
+              {showSniperCrosshair
+                ? t.sniperTouchFire
+                : isPvz
+                  ? t.pvzPlantBtn
+                  : t.act2TouchInteract}
             </button>
           )}
-          {!isSniper && (
+          {!hideFlashlight && (
             <button
               type="button"
               onPointerDown={onToggleFlashlight}
-              className="rounded-xl border border-amber-300/45 bg-amber-500/25 px-4 py-2.5 text-xs font-black text-amber-100"
+              className="rounded-xl border border-amber-300/45 bg-amber-500/25 px-3 py-2 text-[11px] font-black text-amber-100"
             >
               {t.touchLight}
             </button>
@@ -806,14 +1002,14 @@ export const GameHud: React.FC<GameHudProps> = ({
             onPointerDown={() => onVirtualSprint(true)}
             onPointerUp={() => onVirtualSprint(false)}
             onPointerLeave={() => onVirtualSprint(false)}
-            className="rounded-xl border border-sky-400/40 bg-sky-500/25 px-4 py-2.5 text-xs font-black text-sky-100 active:bg-sky-500/50"
+            className="rounded-xl border border-sky-400/40 bg-sky-500/25 px-3 py-2 text-[11px] font-black text-sky-100 active:bg-sky-500/50"
           >
             {t.touchSprint}
           </button>
           <button
             type="button"
             onPointerDown={onVirtualJump}
-            className="rounded-xl border border-emerald-400/40 bg-emerald-500/25 px-4 py-2.5 text-xs font-black text-emerald-100 active:bg-emerald-500/50"
+            className="rounded-xl border border-emerald-400/40 bg-emerald-500/25 px-3 py-2 text-[11px] font-black text-emerald-100 active:bg-emerald-500/50"
           >
             {t.touchJump}
           </button>
@@ -822,3 +1018,4 @@ export const GameHud: React.FC<GameHudProps> = ({
     </div>
   );
 };
+

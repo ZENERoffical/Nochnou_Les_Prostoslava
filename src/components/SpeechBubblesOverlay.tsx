@@ -4,14 +4,16 @@ import { FloatingPickupText, SpeechBubbleState } from '../types/game';
 interface SpeechBubblesOverlayProps {
   bubbles: SpeechBubbleState[];
   floatingTexts: FloatingPickupText[];
+  frameClassName?: string;
 }
 
 export const SpeechBubblesOverlay: React.FC<SpeechBubblesOverlayProps> = ({
   bubbles,
   floatingTexts,
+  frameClassName = 'fixed inset-0',
 }) => {
   return (
-    <div className="pointer-events-none fixed inset-0 overflow-hidden z-20">
+    <div className={`pointer-events-none overflow-hidden z-20 ${frameClassName}`}>
       {floatingTexts.map((item) => (
         <div
           key={item.id}

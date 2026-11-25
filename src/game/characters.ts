@@ -645,19 +645,19 @@ export function createSasha55kXL(anisotropy: number): RobloxRig {
   angryBrows.visible = false;
   head.add(angryBrows);
 
-  // Act 4 Tactical Glowing Visor (ONLY Sasha wears this!)
+  // Act 4 Tactical Glowing White Visor (ONLY Sasha wears this!)
   const visor = new THREE.Group();
   const visorFrameMat = new THREE.MeshStandardMaterial({
-    color: 0x0f172a,
-    metalness: 0.8,
+    color: 0xcbd5e1,
+    metalness: 0.75,
     roughness: 0.25,
   });
   const visorGlassMat = new THREE.MeshStandardMaterial({
-    color: 0x38bdf8,
-    emissive: 0x0ea5e9,
-    emissiveIntensity: 1.4,
-    metalness: 0.4,
-    roughness: 0.12,
+    color: 0xffffff,
+    emissive: 0xf8fafc,
+    emissiveIntensity: 1.65,
+    metalness: 0.2,
+    roughness: 0.08,
   });
   const visorLens = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.15, 0.12), visorGlassMat);
   visorLens.position.set(0, 0.04, 0.27);
