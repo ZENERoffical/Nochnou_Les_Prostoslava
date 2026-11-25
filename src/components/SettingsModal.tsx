@@ -9,6 +9,7 @@ import {
   Settings,
   ShieldAlert,
   Smartphone,
+  UserRound,
   X,
 } from 'lucide-react';
 import { getUiText } from '../game/localization';
@@ -27,6 +28,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onChange,
   onClose,
 }) => {
+  const [showPrequelNotice, setShowPrequelNotice] = React.useState(false);
+
   if (!open) return null;
 
   const t = getUiText(settings.language);
@@ -357,6 +360,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 }`}
               />
             </div>
+          </button>
+
+          {/* Prequel Character Swap Teaser Button (???) */}
+          <button
+            type="button"
+            onClick={() => setShowPrequelNotice((prev) => !prev)}
+            className="flex flex-col gap-2 rounded-xl border border-fuchsia-400/45 bg-fuchsia-500/10 p-3 text-left transition-all cursor-pointer hover:bg-fuchsia-500/20"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <UserRound className="h-5 w-5 shrink-0 text-fuchsia-300 mt-0.5" />
+                <div>
+                  <div className="text-sm font-black tracking-wider text-fuchsia-200">
+                    {t.prequelBtnTitle}
+                  </div>
+                  <div className="text-xs text-slate-300 mt-0.5 leading-snug">
+                    {t.prequelBtnDesc}
+                  </div>
+                </div>
+              </div>
+              <span className="shrink-0 rounded-md border border-fuchsia-400/50 bg-fuchsia-500/25 px-2.5 py-1 text-[11px] font-black uppercase tracking-wide text-fuchsia-100">
+                {t.prequelSoonBadge}
+              </span>
+            </div>
+            {showPrequelNotice && (
+              <div className="rounded-lg border border-fuchsia-400/35 bg-black/45 px-2.5 py-1.5 text-xs font-bold text-fuchsia-200">
+                {t.prequelSoonNotice}
+              </div>
+            )}
           </button>
         </div>
 

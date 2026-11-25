@@ -7,12 +7,14 @@ import {
   Flame,
   Footprints,
   Gamepad2,
+  Palette,
   Play,
   Settings,
   Sparkles,
   Sprout,
   Trees,
   Trophy,
+  Users,
   Volume2,
   VolumeX,
 } from 'lucide-react';
@@ -28,10 +30,14 @@ interface TitleOverlayProps {
   bestSniperKills: number;
   unlockedAchievements: number;
   muted: boolean;
+  partyCode: string | null;
+  partyMembersCount: number;
   onSelectMode: (mode: GameMode) => void;
   onToggleMute: () => void;
   onOpenSettings: () => void;
   onOpenAchievements: () => void;
+  onOpenParty: () => void;
+  onOpenCustomizer: () => void;
   onStart: () => void;
 }
 
@@ -43,10 +49,14 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
   bestSniperKills,
   unlockedAchievements,
   muted,
+  partyCode,
+  partyMembersCount,
   onSelectMode,
   onToggleMute,
   onOpenSettings,
   onOpenAchievements,
+  onOpenParty,
+  onOpenCustomizer,
   onStart,
 }) => {
   const t = getUiText(settings.language);
@@ -110,20 +120,52 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
         isCompact ? 'p-2 sm:p-3' : 'p-4 sm:p-7'
       }`}
     >
-      {/* Top Bar: Settings + Bespoke Inline SVG Title Lockup + Achievements & Mute */}
+      {/* Top Bar: Settings & Party + Bespoke Inline SVG Title Lockup + Achievements & Mute */}
       <div className="flex items-start justify-between gap-2 sm:gap-3">
-        <button
-          type="button"
-          onClick={onOpenSettings}
-          aria-label={t.settingsBtn}
-          title={t.settingsBtn}
-          className={`pointer-events-auto flex items-center gap-1.5 rounded-xl border border-white/20 bg-[#0b141a]/92 px-3 text-xs font-extrabold text-white hover:bg-[#152430] transition-colors cursor-pointer whitespace-nowrap ${
-            isCompact ? 'h-9' : 'h-11'
-          }`}
-        >
-          <Settings className="h-4 w-4 text-emerald-300" />
-          <span className="hidden sm:inline">{t.settingsBtn}</span>
-        </button>
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            aria-label={t.settingsBtn}
+            title={t.settingsBtn}
+            className={`pointer-events-auto flex items-center gap-1.5 rounded-xl border border-white/20 bg-[#0b141a]/92 px-3 text-xs font-extrabold text-white hover:bg-[#152430] transition-colors cursor-pointer whitespace-nowrap ${
+              isCompact ? 'h-9' : 'h-11'
+            }`}
+          >
+            <Settings className="h-4 w-4 text-emerald-300" />
+            <span className="hidden sm:inline">{t.settingsBtn}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenParty}
+            aria-label={t.partyBtn}
+            title={t.partyBtn}
+            className={`pointer-events-auto flex items-center gap-1.5 rounded-xl border px-3 text-xs font-extrabold transition-colors cursor-pointer whitespace-nowrap ${
+              partyCode
+                ? 'border-cyan-400/75 bg-cyan-950/90 text-cyan-200 hover:bg-cyan-900/90'
+                : 'border-cyan-400/40 bg-[#0b141a]/92 text-cyan-200 hover:bg-[#152430]'
+            } ${isCompact ? 'h-9' : 'h-11'}`}
+          >
+            <Users className="h-4 w-4 text-cyan-300" />
+            <span className="hidden sm:inline">
+              {partyCode ? `${partyCode} (${partyMembersCount}/8)` : t.partyBtn}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenCustomizer}
+            aria-label={t.customizeBtn}
+            title={t.customizeBtn}
+            className={`pointer-events-auto flex items-center gap-1.5 rounded-xl border border-emerald-400/40 bg-[#0b141a]/92 px-3 text-xs font-extrabold text-emerald-200 hover:bg-[#152430] transition-colors cursor-pointer whitespace-nowrap ${
+              isCompact ? 'h-9' : 'h-11'
+            }`}
+          >
+            <Palette className="h-4 w-4 text-emerald-300" />
+            <span className="hidden md:inline">{t.customizeBtn}</span>
+          </button>
+        </div>
 
         <div className="flex flex-col items-center text-center">
           <svg

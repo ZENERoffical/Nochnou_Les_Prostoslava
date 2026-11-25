@@ -15,6 +15,7 @@ import {
   Sprout,
   Trees,
   Trophy,
+  Users,
 } from 'lucide-react';
 import {
   getCaughtScreamLine,
@@ -29,6 +30,7 @@ interface GameOverModalProps {
   onResume: () => void;
   onExitToMenu: () => void;
   onOpenSettings: () => void;
+  onReturnToPartyLobby?: () => void;
 }
 
 export const GameOverModal: React.FC<GameOverModalProps> = ({
@@ -37,6 +39,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   onResume,
   onExitToMenu,
   onOpenSettings,
+  onReturnToPartyLobby,
 }) => {
   const t = getUiText(hud.settings.language);
   const outroQuote = getCutsceneLine('outro_0', hud.settings).display;
@@ -123,14 +126,30 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
               <Settings className="h-4 w-4 text-emerald-300" />
               {t.settingsBtn}
             </button>
-            <button
-              type="button"
-              onClick={() => onRestart()}
-              className="flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 hover:bg-white/15 px-5 py-3 font-bold text-white transition-colors cursor-pointer"
-            >
-              <RotateCcw className="h-4 w-4" />
-              {t.restartBtn}
-            </button>
+            {(!hud.partyCode || hud.isPartyHost) ? (
+              <button
+                type="button"
+                onClick={() => onRestart()}
+                className="flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 hover:bg-white/15 px-5 py-3 font-bold text-white transition-colors cursor-pointer"
+              >
+                <RotateCcw className="h-4 w-4" />
+                {t.restartBtn}
+              </button>
+            ) : (
+              <div className="rounded-xl border border-cyan-400/25 bg-cyan-950/35 px-4 py-2 text-xs font-bold text-cyan-200">
+                {t.partyHostOnlyHint}
+              </div>
+            )}
+            {hud.partyCode && hud.isPartyHost && onReturnToPartyLobby && (
+              <button
+                type="button"
+                onClick={onReturnToPartyLobby}
+                className="flex items-center justify-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-500/15 hover:bg-cyan-500/25 px-5 py-3 font-bold text-cyan-200 transition-colors cursor-pointer"
+              >
+                <Users className="h-4 w-4" />
+                {t.partyBackToLobbyBtn}
+              </button>
+            )}
             <button
               type="button"
               onClick={onExitToMenu}
@@ -222,25 +241,29 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
             </div>
           </div>
 
-          {!isMinigameVictory && !isAct2Victory && !isAct3Victory && !isAct4Victory && (
-            <div className="mt-4 rounded-xl border border-sky-400/45 bg-[#101924] p-4">
-              <div className="flex items-center justify-center gap-2 text-sky-300 font-black text-lg">
-                <Factory className="h-5 w-5" />
-                {t.act2CardTitle}
+          {(!hud.partyCode || hud.isPartyHost) &&
+            !isMinigameVictory &&
+            !isAct2Victory &&
+            !isAct3Victory &&
+            !isAct4Victory && (
+              <div className="mt-4 rounded-xl border border-sky-400/45 bg-[#101924] p-4">
+                <div className="flex items-center justify-center gap-2 text-sky-300 font-black text-lg">
+                  <Factory className="h-5 w-5" />
+                  {t.act2CardTitle}
+                </div>
+                <div className="mt-1 text-xs text-slate-300">{t.act2CardSub}</div>
+                <button
+                  type="button"
+                  onClick={() => onRestart('story_act2')}
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-sky-400 hover:bg-sky-300 active:scale-95 px-5 py-3 text-sm font-black text-slate-950 shadow-lg transition-all cursor-pointer"
+                >
+                  <Play className="h-4 w-4 fill-current" />
+                  {t.act2EnterBtn}
+                </button>
               </div>
-              <div className="mt-1 text-xs text-slate-300">{t.act2CardSub}</div>
-              <button
-                type="button"
-                onClick={() => onRestart('story_act2')}
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-sky-400 hover:bg-sky-300 active:scale-95 px-5 py-3 text-sm font-black text-slate-950 shadow-lg transition-all cursor-pointer"
-              >
-                <Play className="h-4 w-4 fill-current" />
-                {t.act2EnterBtn}
-              </button>
-            </div>
-          )}
+            )}
 
-          {isAct2Victory && (
+          {(!hud.partyCode || hud.isPartyHost) && isAct2Victory && (
             <div className="mt-4 rounded-xl border border-pink-400/45 bg-[#1b1020] p-4">
               <div className="flex items-center justify-center gap-2 text-pink-300 font-black text-lg">
                 <Trees className="h-5 w-5" />
@@ -258,7 +281,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
             </div>
           )}
 
-          {isAct3Victory && (
+          {(!hud.partyCode || hud.isPartyHost) && isAct3Victory && (
             <div className="mt-4 rounded-xl border border-purple-400/45 bg-[#1a1026] p-4">
               <div className="flex items-center justify-center gap-2 text-purple-300 font-black text-lg">
                 <Sparkles className="h-5 w-5" />
@@ -346,32 +369,50 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
           </div>
 
           <div className="mt-5 flex flex-col gap-2.5">
-            <button
-              type="button"
-              onClick={() => onRestart(hud.mode)}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-95 px-6 py-3.5 text-base font-black text-slate-950 shadow-lg transition-all cursor-pointer"
-            >
-              <RotateCcw className="h-5 w-5" />
-              {isParkourVictory
-                ? t.replayParkour
-                : isPvzVictory
-                  ? t.replayPvz
-                  : isAct4Victory
-                    ? t.replayAct4
-                    : isAct3Victory
-                      ? t.replayAct3
-                      : isAct2Victory
-                        ? t.replayAct2
-                        : t.replayAct1}
-            </button>
-            <button
-              type="button"
-              onClick={() => onRestart('hardcore_third_person')}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-400/40 bg-rose-500/20 hover:bg-rose-500/30 px-5 py-2.5 text-xs font-extrabold text-rose-200 transition-colors cursor-pointer"
-            >
-              <Flame className="h-4 w-4 text-rose-400" />
-              {t.hardcoreEndlessBtn}
-            </button>
+            {(!hud.partyCode || hud.isPartyHost) ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onRestart(hud.mode)}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-95 px-6 py-3.5 text-base font-black text-slate-950 shadow-lg transition-all cursor-pointer"
+                >
+                  <RotateCcw className="h-5 w-5" />
+                  {isParkourVictory
+                    ? t.replayParkour
+                    : isPvzVictory
+                      ? t.replayPvz
+                      : isAct4Victory
+                        ? t.replayAct4
+                        : isAct3Victory
+                          ? t.replayAct3
+                          : isAct2Victory
+                            ? t.replayAct2
+                            : t.replayAct1}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRestart('hardcore_third_person')}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-400/40 bg-rose-500/20 hover:bg-rose-500/30 px-5 py-2.5 text-xs font-extrabold text-rose-200 transition-colors cursor-pointer"
+                >
+                  <Flame className="h-4 w-4 text-rose-400" />
+                  {t.hardcoreEndlessBtn}
+                </button>
+              </>
+            ) : (
+              <div className="rounded-xl border border-cyan-400/25 bg-cyan-950/35 px-4 py-2.5 text-xs font-bold text-cyan-200">
+                {t.partyHostOnlyHint}
+              </div>
+            )}
+            {hud.partyCode && hud.isPartyHost && onReturnToPartyLobby && (
+              <button
+                type="button"
+                onClick={onReturnToPartyLobby}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-400/45 bg-cyan-500/20 hover:bg-cyan-500/30 px-5 py-2.5 text-xs font-extrabold text-cyan-200 transition-colors cursor-pointer"
+              >
+                <Users className="h-4 w-4" />
+                {t.partyBackToLobbyBtn}
+              </button>
+            )}
             <button
               type="button"
               onClick={onExitToMenu}
@@ -566,51 +607,69 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
         </div>
 
         <div className="mt-5 flex flex-col gap-2.5">
-          <button
-            type="button"
-            onClick={() => onRestart(hud.mode)}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-95 px-6 py-3.5 text-base font-black text-slate-950 shadow-lg transition-all cursor-pointer"
-          >
-            <RotateCcw className="h-5 w-5" />
-            {t.playAgainBtn}
-          </button>
-          <button
-            type="button"
-            onClick={() => onRestart(altMode)}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 hover:bg-white/15 px-5 py-2.5 text-xs font-extrabold text-slate-200 transition-colors cursor-pointer"
-          >
-            {altMode === 'hardcore_third_person' ? (
-              <>
-                <Flame className="h-4 w-4 text-rose-400" />
-                {t.hardcoreEndlessBtn}
-              </>
-            ) : altMode === 'sniper_minigame' ? (
-              <>
-                <Crosshair className="h-4 w-4 text-lime-300" />
-                {t.modeSniperTitle}
-              </>
-            ) : altMode === 'fnaf_epta' ? (
-              <>
-                <Factory className="h-4 w-4 text-orange-300" />
-                {t.modeFnafTitle}
-              </>
-            ) : altMode === 'parkour_minigame' ? (
-              <>
-                <Footprints className="h-4 w-4 text-cyan-300" />
-                {t.modeParkourTitle}
-              </>
-            ) : altMode === 'plants_vs_roners' ? (
-              <>
-                <Sprout className="h-4 w-4 text-green-300" />
-                {t.modePvzTitle}
-              </>
-            ) : (
-              <>
-                <Eye className="h-4 w-4 text-emerald-300" />
-                {t.fpEndlessBtn}
-              </>
-            )}
-          </button>
+          {(!hud.partyCode || hud.isPartyHost) ? (
+            <>
+              <button
+                type="button"
+                onClick={() => onRestart(hud.mode)}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-95 px-6 py-3.5 text-base font-black text-slate-950 shadow-lg transition-all cursor-pointer"
+              >
+                <RotateCcw className="h-5 w-5" />
+                {t.playAgainBtn}
+              </button>
+              <button
+                type="button"
+                onClick={() => onRestart(altMode)}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 hover:bg-white/15 px-5 py-2.5 text-xs font-extrabold text-slate-200 transition-colors cursor-pointer"
+              >
+                {altMode === 'hardcore_third_person' ? (
+                  <>
+                    <Flame className="h-4 w-4 text-rose-400" />
+                    {t.hardcoreEndlessBtn}
+                  </>
+                ) : altMode === 'sniper_minigame' ? (
+                  <>
+                    <Crosshair className="h-4 w-4 text-lime-300" />
+                    {t.modeSniperTitle}
+                  </>
+                ) : altMode === 'fnaf_epta' ? (
+                  <>
+                    <Factory className="h-4 w-4 text-orange-300" />
+                    {t.modeFnafTitle}
+                  </>
+                ) : altMode === 'parkour_minigame' ? (
+                  <>
+                    <Footprints className="h-4 w-4 text-cyan-300" />
+                    {t.modeParkourTitle}
+                  </>
+                ) : altMode === 'plants_vs_roners' ? (
+                  <>
+                    <Sprout className="h-4 w-4 text-green-300" />
+                    {t.modePvzTitle}
+                  </>
+                ) : (
+                  <>
+                    <Eye className="h-4 w-4 text-emerald-300" />
+                    {t.fpEndlessBtn}
+                  </>
+                )}
+              </button>
+            </>
+          ) : (
+            <div className="rounded-xl border border-cyan-400/25 bg-cyan-950/35 px-4 py-2.5 text-xs font-bold text-cyan-200">
+              {t.partyHostOnlyHint}
+            </div>
+          )}
+          {hud.partyCode && hud.isPartyHost && onReturnToPartyLobby && (
+            <button
+              type="button"
+              onClick={onReturnToPartyLobby}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-400/45 bg-cyan-500/20 hover:bg-cyan-500/30 px-5 py-2.5 text-xs font-extrabold text-cyan-200 transition-colors cursor-pointer"
+            >
+              <Users className="h-4 w-4" />
+              {t.partyBackToLobbyBtn}
+            </button>
+          )}
           <button
             type="button"
             onClick={onExitToMenu}

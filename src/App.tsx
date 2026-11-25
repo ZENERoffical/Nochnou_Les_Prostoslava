@@ -1,22 +1,35 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { HelpCircle, RotateCw, Trophy } from 'lucide-react';
 import { AchievementsModal } from './components/AchievementsModal';
+import { CharacterCustomizerModal } from './components/CharacterCustomizerModal';
 import { CutsceneOverlay } from './components/CutsceneOverlay';
 import { GameHud } from './components/GameHud';
 import { GameOverModal } from './components/GameOverModal';
+import { PartyModal } from './components/PartyModal';
 import { SettingsModal } from './components/SettingsModal';
 import { SpeechBubblesOverlay } from './components/SpeechBubblesOverlay';
 import { TitleOverlay } from './components/TitleOverlay';
 import { loadAchievements } from './game/achievements';
+import {
+  loadCustomization,
+  loadNickname,
+  sanitizeCustomization,
+  sanitizeNickname,
+  saveCustomization,
+  saveNickname,
+} from './game/customization';
 import { ForestGameEngine } from './game/ForestGameEngine';
 import { getAchievementText, getUiText, loadSettings } from './game/localization';
+import { MultiplayerClient } from './game/MultiplayerClient';
 import {
   AchievementId,
   AchievementProgressState,
+  CharacterCustomization,
   FloatingPickupText,
   GameMode,
   GameSettings,
   HudSnapshot,
+  PartyRoomState,
   PvzPlantType,
   SpeechBubbleState,
 } from './types/game';
@@ -109,11 +122,16 @@ const INITIAL_HUD: HudSnapshot = {
   pvzHoveredRow: null,
   pvzHoveredCol: null,
   pvzEnemiesRemaining: 0,
+  partyCode: null,
+  isPartyHost: false,
+  partyMembers: [],
+  multiplayerDownedTimer: null,
 };
 
 export default function App() {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<ForestGameEngine | null>(null);
+  const clientRef = useRef<MultiplayerClient | null>(null);
 
   const [hud, setHud] = useState<HudSnapshot>(INITIAL_HUD);
   const [bubbles, setBubbles] = useState<SpeechBubbleState[]>([]);
@@ -121,6 +139,16 @@ export default function App() {
   const [muted, setMuted] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [achievementsOpen, setAchievementsOpen] = useState(false);
+  const [partyOpen, setPartyOpen] = useState(false);
+  const [customizerOpen, setCustomizerOpen] = useState(false);
+  const [initialJoinCode, setInitialJoinCode] = useState('');
+  const [nickname, setNickname] = useState(() => loadNickname());
+  const [customization, setCustomization] = useState<CharacterCustomization>(() =>
+    loadCustomization()
+  );
+  const [partyRoom, setPartyRoom] = useState<PartyRoomState | null>(null);
+  const [myMemberId, setMyMemberId] = useState<string | null>(null);
+  const [partyErrorCode, setPartyErrorCode] = useState<string | null>(null);
   const [achievements, setAchievements] = useState<AchievementProgressState>(
     () => loadAchievements()
   );
@@ -130,6 +158,18 @@ export default function App() {
   const [isPortrait, setIsPortrait] = useState(
     () => typeof window !== 'undefined' && window.innerHeight > window.innerWidth
   );
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const partyParam = params.get('party');
+    if (partyParam) {
+      const cleaned = partyParam.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+      if (cleaned.length >= 4) {
+        setInitialJoinCode(cleaned);
+        setPartyOpen(true);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     const container = mountRef.current;
@@ -148,7 +188,43 @@ export default function App() {
     });
     engineRef.current = engine;
 
+    const client = new MultiplayerClient({
+      onPartyState: (room, memberId) => {
+        setPartyRoom(room);
+        setMyMemberId(memberId);
+        if (room) setPartyErrorCode(null);
+        engine.setPartyRoomState(room, memberId);
+      },
+      onPartyError: (code) => {
+        setPartyErrorCode(code);
+      },
+      onLaunch: (launch) => {
+        setPartyErrorCode(null);
+        setPartyOpen(false);
+        setSettingsOpen(false);
+        setCustomizerOpen(false);
+        engine.launchPartyMatch(launch);
+      },
+      onReturnLobby: (room) => {
+        setPartyRoom(room);
+        setPartyOpen(true);
+        engine.handlePartyReturnLobby(room);
+      },
+      onRemotePlayerState: (state) => {
+        engine.handleRemotePlayerState(state);
+      },
+      onGameEvent: (evt) => {
+        engine.handleMultiplayerGameEvent(evt);
+      },
+    });
+    clientRef.current = client;
+    engine.setMultiplayerClient(client);
+    engine.applyLocalProfile(loadNickname(), loadCustomization());
+
     return () => {
+      client.dispose();
+      clientRef.current = null;
+      engine.setMultiplayerClient(null);
       engine.dispose();
       engineRef.current = null;
     };
@@ -203,8 +279,92 @@ export default function App() {
     engineRef.current?.setSettings(next);
   }, []);
 
-  const handleStart = useCallback((mode?: GameMode) => {
-    engineRef.current?.startGame(mode);
+  const handleStart = useCallback(
+    (mode?: GameMode) => {
+      const client = clientRef.current;
+      if (client?.isInParty()) {
+        if (client.isHost()) {
+          const targetMode = mode ?? hud.mode;
+          client.launchParty(
+            targetMode,
+            hud.settings.hardcoreMode,
+            hud.settings.voidMode
+          );
+        } else {
+          setPartyOpen(true);
+        }
+        return;
+      }
+      engineRef.current?.startGame(mode);
+    },
+    [hud.mode, hud.settings.hardcoreMode, hud.settings.voidMode]
+  );
+
+  const handleSaveProfile = useCallback(
+    (nextName: string, nextCustom: CharacterCustomization) => {
+      const cleanName = sanitizeNickname(nextName);
+      const cleanCustom = sanitizeCustomization(nextCustom);
+      setNickname(cleanName);
+      setCustomization(cleanCustom);
+      saveNickname(cleanName);
+      saveCustomization(cleanCustom);
+      engineRef.current?.applyLocalProfile(cleanName, cleanCustom);
+      clientRef.current?.updateProfile(cleanName, cleanCustom);
+    },
+    []
+  );
+
+  const handleCreateParty = useCallback(
+    (mode: GameMode, hardcoreMode: boolean, voidMode: boolean) => {
+      setPartyErrorCode(null);
+      clientRef.current?.createParty(
+        nickname,
+        customization,
+        mode,
+        hardcoreMode,
+        voidMode
+      );
+    },
+    [nickname, customization]
+  );
+
+  const handleJoinParty = useCallback(
+    (code: string) => {
+      setPartyErrorCode(null);
+      clientRef.current?.joinParty(code, nickname, customization);
+    },
+    [nickname, customization]
+  );
+
+  const handleLeaveParty = useCallback(() => {
+    setPartyErrorCode(null);
+    clientRef.current?.leaveParty();
+  }, []);
+
+  const handleToggleReady = useCallback(() => {
+    clientRef.current?.toggleReady();
+  }, []);
+
+  const handlePartySelectMode = useCallback(
+    (mode: GameMode, hardcoreMode: boolean, voidMode: boolean) => {
+      clientRef.current?.selectMode(mode, hardcoreMode, voidMode);
+      engineRef.current?.setMode(mode);
+    },
+    []
+  );
+
+  const handleLaunchParty = useCallback(() => {
+    const room = clientRef.current?.getRoom();
+    if (!room) return;
+    clientRef.current?.launchParty(room.mode, room.hardcoreMode, room.voidMode);
+  }, []);
+
+  const handleReturnToPartyLobby = useCallback(() => {
+    if (clientRef.current?.isHost()) {
+      clientRef.current.returnToLobby();
+    } else {
+      setPartyOpen(true);
+    }
   }, []);
 
   const handleSkipCutscene = useCallback(() => {
@@ -345,10 +505,18 @@ export default function App() {
           bestSniperKills={hud.bestSniperKills}
           unlockedAchievements={achievements.unlockedIds.length}
           muted={muted}
+          partyCode={hud.partyCode}
+          partyMembersCount={hud.partyMembers.length}
           onSelectMode={handleSelectMode}
           onToggleMute={handleToggleMute}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenAchievements={() => setAchievementsOpen(true)}
+          onOpenParty={() => {
+            setPartyErrorCode(null);
+            clientRef.current?.ensureConnected();
+            setPartyOpen(true);
+          }}
+          onOpenCustomizer={() => setCustomizerOpen(true)}
           onStart={() => handleStart(hud.mode)}
         />
       )}
@@ -403,6 +571,7 @@ export default function App() {
         onResume={handleTogglePause}
         onExitToMenu={handleExitToMenu}
         onOpenSettings={() => setSettingsOpen(true)}
+        onReturnToPartyLobby={handleReturnToPartyLobby}
       />
 
       <SettingsModal
@@ -417,6 +586,34 @@ export default function App() {
         language={hud.settings.language}
         state={achievements}
         onClose={() => setAchievementsOpen(false)}
+      />
+
+      <PartyModal
+        open={partyOpen}
+        language={hud.settings.language}
+        nickname={nickname}
+        customization={customization}
+        room={partyRoom}
+        myMemberId={myMemberId}
+        errorCode={partyErrorCode}
+        initialJoinCode={initialJoinCode}
+        onCreateParty={handleCreateParty}
+        onJoinParty={handleJoinParty}
+        onLeaveParty={handleLeaveParty}
+        onToggleReady={handleToggleReady}
+        onSelectMode={handlePartySelectMode}
+        onLaunchParty={handleLaunchParty}
+        onOpenCustomizer={() => setCustomizerOpen(true)}
+        onClose={() => setPartyOpen(false)}
+      />
+
+      <CharacterCustomizerModal
+        open={customizerOpen}
+        language={hud.settings.language}
+        nickname={nickname}
+        customization={customization}
+        onSave={handleSaveProfile}
+        onClose={() => setCustomizerOpen(false)}
       />
 
       {/* Act 3 Corner Riddle Modal (P + P = 28) */}

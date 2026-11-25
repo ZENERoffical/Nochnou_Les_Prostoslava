@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronUp,
   Crosshair,
+  Crown,
   Factory,
   Flame,
   Flashlight,
@@ -16,6 +17,7 @@ import {
   Shield,
   Sprout,
   Trees,
+  Users,
   Volume2,
   VolumeX,
   Zap,
@@ -597,8 +599,30 @@ export const GameHud: React.FC<GameHudProps> = ({
           </div>
         )}
 
-        {/* Center Event Banner + Hardcore Fire Timer */}
+        {/* Center Event Banner + Hardcore Fire Timer + Party Strip */}
         <div className="flex flex-col items-center gap-1.5">
+          {hud.partyCode && hud.partyMembers.length > 0 && (
+            <div className="flex flex-wrap items-center justify-center gap-1.5 rounded-xl border border-cyan-400/45 bg-[#0a1319]/92 px-2.5 py-1 text-[10px] font-black shadow-lg">
+              <span className="flex items-center gap-1 text-cyan-300">
+                <Users className="h-3.5 w-3.5" />
+                {hud.partyCode}
+              </span>
+              {hud.partyMembers.map((m) => (
+                <span
+                  key={m.id}
+                  className={`flex items-center gap-1 rounded border px-1.5 py-0.5 ${
+                    m.alive
+                      ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-100'
+                      : 'border-rose-400/40 bg-rose-500/20 text-rose-300 line-through opacity-75'
+                  }`}
+                >
+                  {m.isHost && <Crown className="h-2.5 w-2.5 text-amber-300" />}
+                  <span className="max-w-[78px] truncate">{m.name}</span>
+                </span>
+              ))}
+            </div>
+          )}
+
           {hud.hardcoreTimeLeft !== null && (
             <div
               className={`flex items-center gap-1.5 rounded-lg border-2 px-3 py-1 text-xs font-black tabular-nums shadow-lg ${
@@ -795,6 +819,20 @@ export const GameHud: React.FC<GameHudProps> = ({
       {/* Caught Dramatic Screen Vignette */}
       {hud.phase === 'caught' && (
         <div className="pointer-events-none fixed inset-0 border-[10px] border-red-600/80 bg-red-900/20" />
+      )}
+
+      {/* Co-op Downed Auto-Respawn Banner */}
+      {hud.phase === 'playing' && hud.multiplayerDownedTimer !== null && (
+        <div className="pointer-events-none fixed inset-x-0 top-1/3 z-30 flex justify-center px-4">
+          <div className="rounded-2xl border-2 border-cyan-400/75 bg-[#08151d]/95 px-6 py-4 text-center shadow-2xl">
+            <div className="text-sm sm:text-base font-black text-cyan-200">
+              {t.partyDownedMsg}{' '}
+              <span className="text-amber-300 tabular-nums">
+                {Math.max(1, Math.ceil(hud.multiplayerDownedTimer))}s
+              </span>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Bottom Controls Dock & Mobile Touch Controls */}

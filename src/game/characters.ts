@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { CharacterCustomization } from '../types/game';
 import {
   createCamoPantsTexture,
   createContactShadowTexture,
@@ -723,6 +724,454 @@ export function createSasha55kXL(anisotropy: number): RobloxRig {
     lightningEyes,
     nameTag,
     walkPhase: 3.1,
+  };
+}
+
+/**
+ * Custom Mix-and-Match Character Builder for Multiplayer:
+ * Combines head, hat/hair, torso, wings/back, and legs/shoes from the 3 main heroes
+ * (nikitys6666, RONER_552, sasha55k_XL) in any order.
+ */
+export function createCustomRobloxRig(
+  anisotropy: number,
+  nickname: string,
+  custom: CharacterCustomization,
+  nameColor = '#86efac'
+): RobloxRig {
+  const root = new THREE.Group();
+  root.add(makeShadowPlane(createContactShadowTexture(), 0.9));
+
+  // --- Torso & Arms materials ---
+  let torsoMats: THREE.Material[];
+  let armMat: THREE.Material;
+  let handMat: THREE.Material;
+
+  if (custom.torso === 'roner') {
+    const jacketMat = new THREE.MeshStandardMaterial({
+      color: 0x18181b,
+      roughness: 0.72,
+      metalness: 0.06,
+    });
+    const torsoFrontMat = new THREE.MeshStandardMaterial({
+      map: createRonerTorsoTexture(anisotropy),
+      roughness: 0.6,
+      metalness: 0.08,
+    });
+    torsoMats = [jacketMat, jacketMat, jacketMat, jacketMat, torsoFrontMat, jacketMat];
+    armMat = jacketMat;
+    handMat = new THREE.MeshStandardMaterial({
+      color: 0xf8fafc,
+      roughness: 0.5,
+      metalness: 0.02,
+    });
+  } else if (custom.torso === 'sasha') {
+    const darkHoodie = new THREE.MeshStandardMaterial({
+      color: 0x0f172a,
+      roughness: 0.65,
+      metalness: 0.08,
+    });
+    const blueSleeve = new THREE.MeshStandardMaterial({
+      color: 0x1d4ed8,
+      roughness: 0.55,
+      metalness: 0.12,
+    });
+    const torsoFront = new THREE.MeshStandardMaterial({
+      map: createSashaTorsoTexture(anisotropy),
+      roughness: 0.55,
+      metalness: 0.1,
+    });
+    torsoMats = [darkHoodie, darkHoodie, darkHoodie, blueSleeve, torsoFront, darkHoodie];
+    armMat = blueSleeve;
+    handMat = new THREE.MeshStandardMaterial({
+      color: 0xf8fafc,
+      roughness: 0.45,
+      metalness: 0.02,
+    });
+  } else {
+    const blackCloth = new THREE.MeshStandardMaterial({
+      color: 0x1b1d24,
+      roughness: 0.78,
+      metalness: 0.05,
+    });
+    const shirtFrontMat = new THREE.MeshStandardMaterial({
+      map: createNikitysShirtTexture(anisotropy),
+      roughness: 0.65,
+      metalness: 0.08,
+    });
+    torsoMats = [blackCloth, blackCloth, blackCloth, blackCloth, shirtFrontMat, blackCloth];
+    armMat = blackCloth;
+    handMat = new THREE.MeshStandardMaterial({
+      color: 0xf1c7a5,
+      roughness: 0.55,
+      metalness: 0.02,
+    });
+  }
+
+  // --- Legs & Shoes materials ---
+  let legMat: THREE.Material;
+  let shoeMat: THREE.Material;
+  let soleMat: THREE.Material;
+
+  if (custom.legs === 'roner') {
+    legMat = new THREE.MeshStandardMaterial({
+      map: createCamoPantsTexture(anisotropy),
+      roughness: 0.85,
+      metalness: 0.04,
+    });
+    shoeMat = new THREE.MeshStandardMaterial({
+      color: 0xf8fafc,
+      roughness: 0.35,
+      metalness: 0.08,
+    });
+    soleMat = new THREE.MeshStandardMaterial({
+      color: 0xcbd5e1,
+      roughness: 0.45,
+      metalness: 0.05,
+    });
+  } else if (custom.legs === 'sasha') {
+    const darkPants = new THREE.MeshStandardMaterial({
+      color: 0x18181b,
+      roughness: 0.8,
+      metalness: 0.05,
+    });
+    legMat = darkPants;
+    shoeMat = new THREE.MeshStandardMaterial({
+      color: 0x27272a,
+      roughness: 0.45,
+      metalness: 0.12,
+    });
+    soleMat = darkPants;
+  } else {
+    legMat = new THREE.MeshStandardMaterial({
+      map: createCamoPantsTexture(anisotropy),
+      roughness: 0.82,
+      metalness: 0.05,
+    });
+    shoeMat = new THREE.MeshStandardMaterial({
+      color: 0x18181b,
+      roughness: 0.5,
+      metalness: 0.1,
+    });
+    soleMat = new THREE.MeshStandardMaterial({
+      color: 0xf8fafc,
+      roughness: 0.4,
+      metalness: 0.05,
+    });
+  }
+
+  const { bodyPivot, torso, leftArm, rightArm, leftLeg, rightLeg, head } =
+    createBaseRobloxLimbs(torsoMats, armMat, handMat, legMat, shoeMat, soleMat);
+
+  // Torso accessories for Nikita & Sasha
+  if (custom.torso === 'nikita') {
+    const hoodGreen = new THREE.MeshStandardMaterial({
+      color: 0x22c55e,
+      roughness: 0.75,
+      metalness: 0.04,
+    });
+    const scarf = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.16, 0.56), hoodGreen);
+    scarf.position.set(0, 0.42, 0.02);
+    torso.add(scarf);
+  } else if (custom.torso === 'sasha') {
+    const neckPhones = new THREE.Mesh(
+      new THREE.TorusGeometry(0.32, 0.07, 8, 18),
+      new THREE.MeshStandardMaterial({
+        color: 0x4ade80,
+        emissive: 0x22c55e,
+        emissiveIntensity: 0.4,
+        roughness: 0.3,
+        metalness: 0.35,
+      })
+    );
+    neckPhones.rotation.x = Math.PI / 2.2;
+    neckPhones.position.set(0, 0.41, 0.04);
+    torso.add(neckPhones);
+
+    const goldCharm = new THREE.Mesh(
+      new THREE.BoxGeometry(0.14, 0.34, 0.08),
+      new THREE.MeshStandardMaterial({
+        color: 0xfacc15,
+        roughness: 0.2,
+        metalness: 0.88,
+      })
+    );
+    goldCharm.position.set(0.46, -0.32, 0.14);
+    goldCharm.rotation.z = -0.35;
+    torso.add(goldCharm);
+  }
+
+  // --- Head & Face ---
+  if (custom.head === 'roner') {
+    const paleSkin = new THREE.MeshStandardMaterial({
+      color: 0xf8fafc,
+      roughness: 0.5,
+      metalness: 0.02,
+    });
+    const faceFrontMat = new THREE.MeshStandardMaterial({
+      map: createRonerFaceTexture(anisotropy),
+      roughness: 0.38,
+      metalness: 0.15,
+    });
+    const headMesh = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.56, 0.56), [
+      paleSkin,
+      paleSkin,
+      paleSkin,
+      paleSkin,
+      faceFrontMat,
+      paleSkin,
+    ]);
+    head.add(headMesh);
+  } else if (custom.head === 'sasha') {
+    const paleSkin = new THREE.MeshStandardMaterial({
+      color: 0xf8fafc,
+      roughness: 0.45,
+      metalness: 0.02,
+    });
+    const faceFront = new THREE.MeshStandardMaterial({
+      map: createSashaFaceTexture(anisotropy),
+      roughness: 0.45,
+      metalness: 0.05,
+    });
+    const headMesh = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.56, 0.56), [
+      paleSkin,
+      paleSkin,
+      paleSkin,
+      paleSkin,
+      faceFront,
+      paleSkin,
+    ]);
+    head.add(headMesh);
+  } else {
+    const headBaseMat = new THREE.MeshStandardMaterial({
+      color: 0x166534,
+      roughness: 0.72,
+      metalness: 0.05,
+    });
+    const faceFrontMat = new THREE.MeshStandardMaterial({
+      map: createNikitysFaceTexture(anisotropy),
+      roughness: 0.3,
+      metalness: 0.25,
+    });
+    const headCube = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.58, 0.6), [
+      headBaseMat,
+      headBaseMat,
+      headBaseMat,
+      headBaseMat,
+      faceFrontMat,
+      headBaseMat,
+    ]);
+    head.add(headCube);
+  }
+
+  // --- Hat / Hair ---
+  if (custom.hat === 'nikita') {
+    const hoodGreen = new THREE.MeshStandardMaterial({
+      color: 0x22c55e,
+      roughness: 0.75,
+      metalness: 0.04,
+    });
+    const hoodDark = new THREE.MeshStandardMaterial({
+      color: 0x14532d,
+      roughness: 0.8,
+      metalness: 0.04,
+    });
+    const hoodTop = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.18, 0.68), hoodDark);
+    hoodTop.position.set(0, 0.3, -0.02);
+    head.add(hoodTop);
+
+    const earGeo = new THREE.ConeGeometry(0.14, 0.28, 4);
+    const earL = new THREE.Mesh(earGeo, hoodGreen);
+    earL.position.set(-0.24, 0.48, 0.02);
+    earL.rotation.z = 0.22;
+    const earR = new THREE.Mesh(earGeo, hoodGreen);
+    earR.position.set(0.24, 0.48, 0.02);
+    earR.rotation.z = -0.22;
+    head.add(earL, earR);
+  } else if (custom.hat === 'roner') {
+    const hairMat = new THREE.MeshStandardMaterial({
+      color: 0x854d0e,
+      roughness: 0.78,
+      metalness: 0.04,
+    });
+    const hairBack = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.4, 0.34), hairMat);
+    hairBack.position.set(0, 0.1, -0.14);
+    const hairBangs = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.16, 0.24), hairMat);
+    hairBangs.position.set(0, 0.26, 0.18);
+    hairBangs.rotation.z = 0.08;
+    head.add(hairBack, hairBangs);
+
+    const beanieMat = new THREE.MeshStandardMaterial({
+      color: 0xf1f5f9,
+      roughness: 0.65,
+      metalness: 0.04,
+    });
+    const beanie = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.2, 0.52), beanieMat);
+    beanie.position.set(0, 0.38, -0.02);
+    head.add(beanie);
+
+    const pinBlue = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, 0.05, 0.04),
+      new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.3 })
+    );
+    pinBlue.position.set(0.24, 0.5, 0.08);
+    const pinYellow = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, 0.05, 0.04),
+      new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3 })
+    );
+    pinYellow.position.set(0.24, 0.45, 0.08);
+    head.add(pinBlue, pinYellow);
+  } else if (custom.hat === 'sasha') {
+    const whiteHair = new THREE.Mesh(
+      new THREE.BoxGeometry(0.64, 0.36, 0.44),
+      new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.55 })
+    );
+    whiteHair.position.set(0, 0.1, -0.09);
+    head.add(whiteHair);
+
+    const hatMat = new THREE.MeshStandardMaterial({
+      color: 0x09090b,
+      roughness: 0.42,
+      metalness: 0.25,
+    });
+    const hatBrim = new THREE.Mesh(new THREE.CylinderGeometry(0.74, 0.82, 0.08, 12), hatMat);
+    hatBrim.position.set(0, 0.32, 0);
+    const hatCrown = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.42, 12), hatMat);
+    hatCrown.position.set(0, 0.55, 0);
+    const neonRim = new THREE.Mesh(
+      new THREE.TorusGeometry(0.78, 0.028, 8, 24),
+      new THREE.MeshStandardMaterial({
+        color: 0xd946ef,
+        emissive: 0xa855f7,
+        emissiveIntensity: 0.9,
+        roughness: 0.2,
+        metalness: 0.4,
+      })
+    );
+    neonRim.rotation.x = Math.PI / 2;
+    neonRim.position.set(0, 0.3, 0);
+    head.add(hatBrim, hatCrown, neonRim);
+
+    const tasselMat = new THREE.MeshStandardMaterial({
+      color: 0x22d3ee,
+      emissive: 0x06b6d4,
+      emissiveIntensity: 0.7,
+      roughness: 0.25,
+    });
+    for (const side of [-1, 1]) {
+      const tassel = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.34, 0.05), tasselMat);
+      tassel.position.set(side * 0.58, 0.08, 0.15);
+      head.add(tassel);
+    }
+  }
+
+  // --- Wings / Back ---
+  let leftWing: THREE.Group | undefined;
+  let rightWing: THREE.Group | undefined;
+
+  if (custom.wings === 'nikita') {
+    const flameRed = new THREE.MeshStandardMaterial({
+      color: 0xea580c,
+      emissive: 0x9a3412,
+      emissiveIntensity: 0.35,
+      roughness: 0.42,
+      metalness: 0.15,
+    });
+    const flameGold = new THREE.MeshStandardMaterial({
+      color: 0xfacc15,
+      emissive: 0xca8a04,
+      emissiveIntensity: 0.45,
+      roughness: 0.35,
+      metalness: 0.25,
+    });
+    const makeFlameWing = (side: -1 | 1) => {
+      const wing = new THREE.Group();
+      wing.position.set(side * 0.24, 0.18, -0.26);
+      const plumeOffsets = [
+        { x: 0.42, y: 0.52, rot: 0.45, sx: 0.62, sy: 0.92, mat: flameRed },
+        { x: 0.68, y: 0.28, rot: 0.78, sx: 0.55, sy: 0.85, mat: flameGold },
+        { x: 0.52, y: -0.05, rot: 1.05, sx: 0.48, sy: 0.72, mat: flameRed },
+        { x: 0.28, y: -0.28, rot: 1.25, sx: 0.4, sy: 0.55, mat: flameGold },
+      ];
+      for (const p of plumeOffsets) {
+        const feather = new THREE.Mesh(new THREE.BoxGeometry(p.sx, p.sy, 0.09), p.mat);
+        feather.position.set(side * p.x, p.y, -0.08);
+        feather.rotation.z = -side * p.rot;
+        feather.rotation.y = side * 0.22;
+        wing.add(feather);
+      }
+      return wing;
+    };
+    leftWing = makeFlameWing(-1);
+    rightWing = makeFlameWing(1);
+    torso.add(leftWing, rightWing);
+  } else if (custom.wings === 'sasha') {
+    const iceMat = new THREE.MeshStandardMaterial({
+      color: 0xe0f2fe,
+      emissive: 0xbae6fd,
+      emissiveIntensity: 0.25,
+      roughness: 0.22,
+      metalness: 0.35,
+    });
+    const makeIceWing = (side: -1 | 1) => {
+      const wing = new THREE.Group();
+      wing.position.set(side * 0.22, 0.15, -0.25);
+      const shard1 = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.22, 0.06), iceMat);
+      shard1.position.set(side * 0.38, 0.25, -0.06);
+      shard1.rotation.z = side * 0.35;
+      const shard2 = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.18, 0.06), iceMat);
+      shard2.position.set(side * 0.34, 0.0, -0.06);
+      shard2.rotation.z = side * 0.05;
+      const shard3 = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.16, 0.06), iceMat);
+      shard3.position.set(side * 0.24, -0.22, -0.06);
+      shard3.rotation.z = -side * 0.25;
+      wing.add(shard1, shard2, shard3);
+      return wing;
+    };
+    leftWing = makeIceWing(-1);
+    rightWing = makeIceWing(1);
+    torso.add(leftWing, rightWing);
+  } else {
+    // Roner style: compact tactical backpack with blue-yellow pin
+    const packMat = new THREE.MeshStandardMaterial({
+      color: 0x1e293b,
+      roughness: 0.72,
+      metalness: 0.12,
+    });
+    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.62, 0.22), packMat);
+    pack.position.set(0, 0.02, -0.32);
+    const pocket = new THREE.Mesh(
+      new THREE.BoxGeometry(0.42, 0.28, 0.08),
+      new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.65 })
+    );
+    pocket.position.set(0, -0.1, -0.45);
+    const patch = new THREE.Mesh(
+      new THREE.BoxGeometry(0.16, 0.1, 0.04),
+      new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35 })
+    );
+    patch.position.set(0, 0.16, -0.44);
+    torso.add(pack, pocket, patch);
+  }
+
+  enableShadows(bodyPivot);
+  root.add(bodyPivot);
+
+  const nameTag = createNameTagSprite(nickname || 'Player', nameColor);
+  nameTag.position.set(0, custom.hat === 'sasha' ? 2.95 : 2.75, 0);
+  root.add(nameTag);
+
+  return {
+    root,
+    bodyPivot,
+    head,
+    torso,
+    leftArm,
+    rightArm,
+    leftLeg,
+    rightLeg,
+    leftWing,
+    rightWing,
+    nameTag,
+    walkPhase: 0,
   };
 }
 

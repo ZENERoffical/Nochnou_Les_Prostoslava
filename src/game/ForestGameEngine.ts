@@ -5,10 +5,10 @@ import {
   animateRobloxCharacter,
   animateRobloxSeated,
   createBatteryProp,
+  createCustomRobloxRig,
   createFlashlightProp,
   createGateProp,
   createMivinaFactoryEntrance,
-  createNikitys6666,
   createProstophilyaMushroom,
   createRoner552,
   createSasha55kXL,
@@ -17,6 +17,20 @@ import {
   MivinaFactoryRig,
   RobloxRig,
 } from './characters';
+import {
+  loadCustomization,
+  loadNickname,
+  sanitizeCustomization,
+  sanitizeNickname,
+  saveCustomization,
+  saveNickname,
+} from './customization';
+import type {
+  GameEventMsg,
+  MultiplayerClient,
+  PartyLaunchMsg,
+  RemotePlayerStateMsg,
+} from './MultiplayerClient';
 import { buildForestEnvironment, ForestSceneObjects } from './forest';
 import {
   ForestLayout,
@@ -124,6 +138,7 @@ import {
   AchievementId,
   AchievementProgressState,
   Act4WeaponId,
+  CharacterCustomization,
   ChaserId,
   CutsceneSubtitle,
   FloatingPickupText,
@@ -132,6 +147,7 @@ import {
   GameSettings,
   GraphicsQuality,
   HudSnapshot,
+  PartyRoomState,
   PvzPlantType,
   SpeechBubbleState,
   StoryActMode,
@@ -155,12 +171,12 @@ const ACT3_BOSS_MAX_HP = 14;
 const HARDCORE_DURATION_SECONDS = 120.0;
 const PVZ_COSTS: Record<PvzPlantType, number> = {
   sun: 50,
-  peashooter: 100,
-  repeater: 175,
-  wallnut: 75,
+  peashooter: 75,
+  repeater: 125,
+  wallnut: 50,
   shovel: 0,
 };
-const PVZ_WAVE_COUNTS = [5, 8, 12, 16];
+const PVZ_WAVE_COUNTS = [4, 6, 8, 10];
 const ACT4_WAVE_COUNTS = [5, 10, 20, 40, 60, 67, 1];
 const ACT4_BOSS_MAX_HP = 11488;
 const ACT4_WEAPON_ORDER: Act4WeaponId[] = [
@@ -333,6 +349,31 @@ interface Act4CloneEntity {
   tauntTimer: number;
   currentBubbleText: string | null;
   bubbleTimer: number;
+}
+
+interface RemotePlayerEntity {
+  id: string;
+  name: string;
+  rig: RobloxRig;
+  flashlight: FlashlightRig;
+  customKey: string;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  targetX: number;
+  targetY: number;
+  targetZ: number;
+  targetYaw: number;
+  speedNorm: number;
+  isAirborne: boolean;
+  isDead: boolean;
+  flashlightOn: boolean;
+  alive: boolean;
+  activeWeapon: Act4WeaponId;
+  bubbleText: string | null;
+  bubbleTimer: number;
+  hasState: boolean;
 }
 
 export interface EngineCallbacks {
@@ -573,6 +614,15 @@ export class ForestGameEngine {
   private alarmSoundTimer = 0;
 
   private playerRig: RobloxRig;
+  private localNickname: string = loadNickname();
+  private localCustomization: CharacterCustomization = loadCustomization();
+  private multiplayerClient: MultiplayerClient | null = null;
+  private partyRoom: PartyRoomState | null = null;
+  private partyMyId: string | null = null;
+  private remotePlayers = new Map<string, RemotePlayerEntity>();
+  private lastStateSentAt = 0;
+  private multiplayerDownedTimer: number | null = null;
+  private suppressMpEmit = false;
   private playerBubbleText: string | null = null;
   private chasers: ChaserEntity[] = [];
   private mushrooms: MushroomItem[] = [];
@@ -748,7 +798,11 @@ export class ForestGameEngine {
     );
     this.buildStoryGates();
 
-    this.playerRig = createNikitys6666(this.anisotropy);
+    this.playerRig = createCustomRobloxRig(
+      this.anisotropy,
+      this.localNickname,
+      this.localCustomization
+    );
     this.scene.add(this.playerRig.root);
 
     this.flashlightSpot = new THREE.SpotLight(
@@ -1063,7 +1117,10 @@ export class ForestGameEngine {
   }
 
   private getEnemySpeedMultiplier(): number {
-    return this.settings.hardcoreMode ? 1.38 : 1.0;
+    if (!this.settings.hardcoreMode) return 1.0;
+    if (this.mode === 'story_act3' || this.mode === 'act3_survival') return 1.2;
+    if (this.mode === 'plants_vs_roners' || this.mode === 'story_act4') return 1.22;
+    return 1.34;
   }
 
   private createHardcoreFirePool(): void {
@@ -1411,6 +1468,507 @@ export class ForestGameEngine {
       this.setupTitleShowcase();
     }
     this.pushHud(true);
+  }
+
+  public setMultiplayerClient(client: MultiplayerClient | null): void {
+    this.multiplayerClient = client;
+  }
+
+  public applyLocalProfile(nickname: string, customization: CharacterCustomization): void {
+    const cleanName = sanitizeNickname(nickname);
+    const cleanCustom = sanitizeCustomization(customization);
+    this.localNickname = cleanName;
+    this.localCustomization = cleanCustom;
+    saveNickname(cleanName);
+    saveCustomization(cleanCustom);
+
+    const oldRig = this.playerRig;
+    const oldRoot = oldRig.root;
+    const wasVisible = oldRoot.visible;
+    const oldPos = oldRoot.position.clone();
+    const oldRotY = oldRoot.rotation.y;
+
+    oldRig.rightArm.remove(this.tpFlashlight.group);
+    oldRoot.remove(this.nikitaSniperRifle);
+    this.scene.remove(oldRoot);
+    this.disposeObjectResources(oldRoot);
+
+    this.playerRig = createCustomRobloxRig(
+      this.anisotropy,
+      cleanName,
+      cleanCustom
+    );
+    this.playerRig.root.visible = wasVisible;
+    this.playerRig.root.position.copy(oldPos);
+    this.playerRig.root.rotation.y = oldRotY;
+    this.playerRig.rightArm.add(this.tpFlashlight.group);
+    this.playerRig.root.add(this.nikitaSniperRifle);
+    this.scene.add(this.playerRig.root);
+    this.pushHud(true);
+  }
+
+  public setPartyRoomState(room: PartyRoomState | null, myMemberId: string | null): void {
+    this.partyRoom = room;
+    this.partyMyId = myMemberId;
+
+    if (!room) {
+      this.multiplayerDownedTimer = null;
+      for (const remote of this.remotePlayers.values()) {
+        this.scene.remove(remote.rig.root);
+        this.disposeObjectResources(remote.rig.root);
+      }
+      this.remotePlayers.clear();
+      this.pushHud(true);
+      return;
+    }
+
+    const activeIds = new Set<string>();
+    for (const member of room.members) {
+      if (member.id === myMemberId) continue;
+      activeIds.add(member.id);
+      const customKey = `${member.name}|${member.customization.head}|${member.customization.hat}|${member.customization.torso}|${member.customization.wings}|${member.customization.legs}`;
+      const existing = this.remotePlayers.get(member.id);
+      if (!existing) {
+        const rig = createCustomRobloxRig(
+          this.anisotropy,
+          member.name,
+          member.customization,
+          member.isHost ? '#fde047' : '#7dd3fc'
+        );
+        const flashlight = createFlashlightProp(false);
+        flashlight.group.position.set(0, -0.76, 0.04);
+        flashlight.group.rotation.x = -Math.PI / 2;
+        rig.rightArm.add(flashlight.group);
+        rig.root.visible = false;
+        this.scene.add(rig.root);
+        this.remotePlayers.set(member.id, {
+          id: member.id,
+          name: member.name,
+          rig,
+          flashlight,
+          customKey,
+          x: member.x ?? 0,
+          y: member.y ?? 0,
+          z: member.z ?? 0,
+          yaw: member.yaw ?? Math.PI,
+          targetX: member.x ?? 0,
+          targetY: member.y ?? 0,
+          targetZ: member.z ?? 0,
+          targetYaw: member.yaw ?? Math.PI,
+          speedNorm: member.speedNorm ?? 0,
+          isAirborne: Boolean(member.isAirborne),
+          isDead: Boolean(member.isDead),
+          flashlightOn: Boolean(member.flashlightOn),
+          alive: member.alive,
+          activeWeapon: member.activeWeapon ?? 'pistol',
+          bubbleText: null,
+          bubbleTimer: 0,
+          hasState: typeof member.x === 'number',
+        });
+      } else if (existing.customKey !== customKey) {
+        const prevPos = existing.rig.root.position.clone();
+        const prevRot = existing.rig.root.rotation.y;
+        const prevVis = existing.rig.root.visible;
+        existing.rig.rightArm.remove(existing.flashlight.group);
+        this.scene.remove(existing.rig.root);
+        this.disposeObjectResources(existing.rig.root);
+        const newRig = createCustomRobloxRig(
+          this.anisotropy,
+          member.name,
+          member.customization,
+          member.isHost ? '#fde047' : '#7dd3fc'
+        );
+        newRig.rightArm.add(existing.flashlight.group);
+        newRig.root.position.copy(prevPos);
+        newRig.root.rotation.y = prevRot;
+        newRig.root.visible = prevVis;
+        this.scene.add(newRig.root);
+        existing.rig = newRig;
+        existing.name = member.name;
+        existing.customKey = customKey;
+        existing.alive = member.alive;
+      } else {
+        existing.alive = member.alive;
+        existing.isDead = Boolean(member.isDead);
+      }
+    }
+
+    for (const [id, remote] of this.remotePlayers.entries()) {
+      if (!activeIds.has(id)) {
+        this.scene.remove(remote.rig.root);
+        this.disposeObjectResources(remote.rig.root);
+        this.remotePlayers.delete(id);
+      }
+    }
+
+    this.pushHud(true);
+  }
+
+  public launchPartyMatch(launch: PartyLaunchMsg): void {
+    this.setPartyRoomState(launch.room, this.partyMyId);
+    this.multiplayerDownedTimer = null;
+    if (
+      this.settings.hardcoreMode !== launch.hardcoreMode ||
+      this.settings.voidMode !== launch.voidMode
+    ) {
+      this.setSettings({
+        ...this.settings,
+        hardcoreMode: launch.hardcoreMode,
+        voidMode: launch.voidMode,
+      });
+    }
+    this.startGame(launch.mode);
+
+    // Apply small horizontal spawn spread so teammates don't stack on exact same spot
+    if (launch.room && this.partyMyId) {
+      const idx = launch.room.members.findIndex((m) => m.id === this.partyMyId);
+      if (idx > 0) {
+        const offsetAngle = (idx / Math.max(1, launch.room.members.length)) * Math.PI * 2;
+        this.playerX += Math.cos(offsetAngle) * 1.6;
+        this.playerZ += Math.sin(offsetAngle) * 1.6;
+        this.playerRig.root.position.set(this.playerX, this.playerY, this.playerZ);
+      }
+    }
+    this.pushHud(true);
+  }
+
+  public handlePartyReturnLobby(room: PartyRoomState): void {
+    this.setPartyRoomState(room, this.partyMyId);
+    this.multiplayerDownedTimer = null;
+    this.setMode(room.mode);
+    this.returnToMenu();
+  }
+
+  public handleRemotePlayerState(msg: RemotePlayerStateMsg): void {
+    const remote = this.remotePlayers.get(msg.memberId);
+    if (!remote) return;
+    if (!remote.hasState) {
+      remote.x = msg.x;
+      remote.y = msg.y;
+      remote.z = msg.z;
+      remote.yaw = msg.yaw;
+      remote.hasState = true;
+    }
+    remote.targetX = msg.x;
+    remote.targetY = msg.y;
+    remote.targetZ = msg.z;
+    remote.targetYaw = msg.yaw;
+    remote.speedNorm = msg.speedNorm;
+    remote.isAirborne = msg.isAirborne;
+    remote.isDead = msg.isDead;
+    remote.flashlightOn = msg.flashlightOn;
+    remote.alive = msg.alive;
+    remote.activeWeapon = msg.activeWeapon;
+  }
+
+  public handleMultiplayerGameEvent(evt: GameEventMsg): void {
+    const p = evt.payload ?? {};
+    this.suppressMpEmit = true;
+    try {
+      if (evt.eventType === 'party_gameover') {
+        this.multiplayerDownedTimer = null;
+        this.hardcoreBurnout = Boolean(p.hardcoreBurnout);
+        this.killerId = (p.killerId === 'sasha' ? 'sasha' : 'roner') as ChaserId;
+        this.killerName =
+          typeof p.killerName === 'string' ? p.killerName : 'RONER_552';
+        this.phase = 'gameover';
+        this.isHidingInLocker = false;
+        this.hiddenLockerId = null;
+        this.isPrimaryFireHeld = false;
+        this.heldKeys.clear();
+        if (document.pointerLockElement === this.renderer.domElement) {
+          document.exitPointerLock?.();
+        }
+        this.audio.playExplosion();
+        this.pushHud(true);
+        return;
+      }
+
+      if (evt.eventType === 'player_downed') {
+        const remote = this.remotePlayers.get(evt.senderId);
+        if (remote) {
+          remote.alive = false;
+          remote.isDead = true;
+          remote.bubbleText =
+            this.settings.language === 'en' ? 'DOWNED! (5s)' : 'ПОЙМАН! (5с)';
+          remote.bubbleTimer = 3.5;
+        }
+        this.pushHud(true);
+        return;
+      }
+
+      if (evt.eventType === 'player_revived') {
+        const remote = this.remotePlayers.get(evt.senderId);
+        if (remote) {
+          remote.alive = true;
+          remote.isDead = false;
+          remote.bubbleText =
+            this.settings.language === 'en' ? 'BACK IN ACTION!' : 'В СТРОЮ!';
+          remote.bubbleTimer = 2.0;
+        }
+        this.pushHud(true);
+        return;
+      }
+
+      if (evt.eventType === 'skip_cutscene') {
+        if (typeof p.phase === 'string' && this.phase === p.phase) {
+          this.skipCutscene();
+        }
+        return;
+      }
+
+      if (evt.eventType === 'collectible_claim') {
+        const kind = p.kind;
+        if (kind === 'mushroom') {
+          const mushId = Number(p.id);
+          const idx = this.mushrooms.findIndex((m) => m.id === mushId);
+          if (idx >= 0) {
+            const m = this.mushrooms[idx];
+            this.scene.remove(m.mesh);
+            this.mushrooms.splice(idx, 1);
+            this.emitParticles(m.x, m.y, m.z, m.isGolden ? 'gold' : 'green');
+          }
+          const gained = Number(p.gained) || 1;
+          this.mushroomsCollected += gained;
+          if (this.mode !== 'story_act1' && idx >= 0) {
+            this.spawnArenaMushroom(true);
+          } else if (
+            this.mode === 'story_act1' &&
+            this.mushroomsCollected >= STORY_TARGET_MUSHROOMS
+          ) {
+            this.eventBanner =
+              this.settings.language === 'en'
+                ? '40 mushrooms collected! Run to Mivina Corporation!'
+                : '40 грибов собрано! Беги к заводу «Мивина Корпорейшен»!';
+            this.eventBannerTimer = 4.5;
+          }
+          this.audio.playPickup(Boolean(p.isGolden));
+          this.pushHud(true);
+        } else if (kind === 'battery') {
+          const batId = Number(p.id);
+          const idx = this.batteries.findIndex((b) => b.id === batId);
+          if (idx >= 0) {
+            const b = this.batteries[idx];
+            this.scene.remove(b.mesh);
+            this.batteries.splice(idx, 1);
+            this.emitParticles(b.x, b.y, b.z, 'battery');
+          }
+          this.battery = Math.min(100, this.battery + 25);
+          this.audio.playBatteryPickup();
+          this.pushHud(true);
+        } else if (kind === 'act1_outro') {
+          if (this.mode === 'story_act1' && this.phase === 'playing') {
+            this.startOutroCutscene();
+          }
+        }
+        return;
+      }
+
+      if (evt.eventType === 'act2_sync') {
+        const action = p.action;
+        if (typeof p.noodlesSeasoned === 'number') {
+          this.noodlesSeasoned = Math.max(this.noodlesSeasoned, p.noodlesSeasoned);
+        }
+        if (typeof p.noodlesPacked === 'number') {
+          this.noodlesPacked = Math.max(this.noodlesPacked, p.noodlesPacked);
+        }
+        if (typeof p.fnafMivinasTotal === 'number') {
+          this.fnafMivinasTotal = Math.max(this.fnafMivinasTotal, p.fnafMivinasTotal);
+        }
+        if (typeof p.fnafBatch === 'number') {
+          this.fnafBatch = Math.max(this.fnafBatch, p.fnafBatch);
+        }
+        if (typeof p.boxesFound === 'number') {
+          this.boxesFound = Math.max(this.boxesFound, p.boxesFound);
+        }
+        if (typeof p.hasCorridorKey === 'boolean' && p.hasCorridorKey) {
+          this.hasCorridorKey = true;
+        }
+        if (
+          p.act2Stage === 'conveyor' ||
+          p.act2Stage === 'packaging' ||
+          p.act2Stage === 'corridor_key' ||
+          p.act2Stage === 'corridor'
+        ) {
+          this.act2Stage = p.act2Stage;
+        }
+        if (this.factoryObjs) {
+          for (let i = 0; i < this.factoryObjs.conveyor.packedCratePacks.length; i++) {
+            this.factoryObjs.conveyor.packedCratePacks[i].visible = i < this.noodlesPacked;
+          }
+        }
+        if (action === 'door_cutscene' && this.phase === 'playing') {
+          this.startAct2DoorCutscene();
+        } else if (action === 'outro' && this.phase === 'playing') {
+          this.startAct2OutroCutscene();
+        } else {
+          this.pushHud(true);
+        }
+        return;
+      }
+
+      if (evt.eventType === 'act3_sync') {
+        if (typeof p.act3FireFuel === 'number') {
+          this.act3FireFuel = Math.max(this.act3FireFuel, p.act3FireFuel);
+        }
+        if (typeof p.act3CrusherMetal === 'number') {
+          this.act3CrusherMetal = p.act3CrusherMetal;
+        }
+        if (typeof p.act3BaseLevel === 'number') {
+          const lv = THREE.MathUtils.clamp(Math.round(p.act3BaseLevel), 1, 6) as 1 | 2 | 3 | 4 | 5 | 6;
+          if (lv > this.act3BaseLevel) {
+            this.act3BaseLevel = lv;
+            if (this.act3ParkObjs) {
+              this.act3ParkObjs.level2FenceGroup.visible = lv >= 2;
+              this.act3ParkObjs.level3DefenseGroup.visible = lv >= 3;
+              this.act3ParkObjs.level4BedGroup.visible = lv >= 4;
+              this.act3ParkObjs.level5BedUpgradeGroup.visible = lv >= 5;
+              this.act3ParkObjs.level6BedUpgradeGroup.visible = lv >= 6;
+            }
+            this.audio.playBaseUpgrade();
+          }
+        }
+        if (typeof p.act3Night === 'number' && p.act3Night > this.act3Night) {
+          this.act3Night = p.act3Night;
+          this.act3DayClock = 0;
+          if (typeof p.act3BedCooldownNights === 'number') {
+            this.act3BedCooldownNights = p.act3BedCooldownNights;
+          }
+          if (
+            this.mode === 'story_act3' &&
+            this.act3Night >= ACT3_MAX_NIGHTS &&
+            !this.act3HasSniper
+          ) {
+            this.triggerAct3Night30Climax();
+          }
+        }
+        if (typeof p.act3BossHp === 'number') {
+          this.act3BossHp = Math.min(this.act3BossHp, p.act3BossHp);
+          if (this.act3BossHp <= 0 && this.chasers[1]) {
+            this.chasers[1].active = false;
+            this.chasers[1].rig.root.visible = false;
+          }
+        }
+        if (p.action === 'outro' && this.phase === 'playing') {
+          this.startAct3OutroCutscene();
+        }
+        this.pushHud(true);
+        return;
+      }
+
+      if (evt.eventType === 'act4_sync') {
+        const action = p.action;
+        if (action === 'start_battle' && this.act4Stage === 'walk_to_house') {
+          this.act4Stage = 'battle';
+          this.act4ActiveWeapon = 'pistol';
+          this.act4UnlockedWeapons = ['pistol'];
+          this.syncAct2EnemyAppearance();
+          this.startAct4Wave(1);
+        }
+        if (typeof p.act4Kills === 'number' && p.act4Kills > this.act4Kills) {
+          this.act4Kills = p.act4Kills;
+          for (const w of ACT4_WEAPON_ORDER) {
+            if (
+              this.act4Kills >= ACT4_WEAPON_THRESHOLDS[w] &&
+              !this.act4UnlockedWeapons.includes(w)
+            ) {
+              this.act4UnlockedWeapons = [...this.act4UnlockedWeapons, w];
+            }
+          }
+        }
+        if (typeof p.act4Wave === 'number' && p.act4Wave > this.act4Wave) {
+          this.startAct4Wave(p.act4Wave);
+        }
+        if (p.act4HasTurrets === true && !this.act4HasTurrets) {
+          this.act4HasTurrets = true;
+          if (this.act4VillageObjs) {
+            for (const tr of this.act4VillageObjs.turrets) {
+              tr.group.visible = true;
+              tr.cooldown = 0.05;
+            }
+          }
+        }
+        if (typeof p.act4BossHp === 'number') {
+          this.act4BossHp = Math.min(this.act4BossHp, p.act4BossHp);
+        }
+        if (action === 'outro' && this.phase === 'playing') {
+          this.startAct4OutroCutscene();
+        }
+        this.pushHud(true);
+        return;
+      }
+
+      if (evt.eventType === 'sniper_sync') {
+        if (typeof p.clonesKilled === 'number' && p.clonesKilled > this.clonesKilled) {
+          this.clonesKilled = p.clonesKilled;
+          this.sniperWave = 1 + Math.floor(this.clonesKilled / 10);
+          this.pushHud(true);
+        }
+        return;
+      }
+
+      if (evt.eventType === 'parkour_victory') {
+        if (this.mode === 'parkour_minigame' && this.phase === 'playing') {
+          this.finishParkourVictory();
+        }
+        return;
+      }
+
+      if (evt.eventType === 'pvz_sync') {
+        const action = p.action;
+        if (typeof p.pvzEnergy === 'number') {
+          this.pvzEnergy = p.pvzEnergy;
+        }
+        if (action === 'plant') {
+          const row = Number(p.row);
+          const col = Number(p.col);
+          const kind = p.kind as Exclude<PvzPlantType, 'shovel'>;
+          if (
+            Number.isInteger(row) &&
+            Number.isInteger(col) &&
+            row >= 0 &&
+            row < PVZ_ROWS &&
+            col >= 0 &&
+            col < PVZ_COLS &&
+            (kind === 'sun' || kind === 'peashooter' || kind === 'repeater' || kind === 'wallnut')
+          ) {
+            const exists = this.pvzPlants.some((pl) => pl.row === row && pl.col === col);
+            if (!exists) {
+              const rig = createPvzPlantRig(kind);
+              const pos = pvzTileWorldPos(row, col);
+              rig.group.position.set(pos.x, 0, pos.z);
+              this.scene.add(rig.group);
+              const maxHp = kind === 'wallnut' ? 750 : 200;
+              this.pvzPlants.push({
+                row,
+                col,
+                kind,
+                hp: maxHp,
+                maxHp,
+                cooldown: kind === 'sun' ? 3.0 : 0.25,
+                rig,
+              });
+              this.audio.playBoxPickup();
+            }
+          }
+        } else if (action === 'shovel') {
+          const row = Number(p.row);
+          const col = Number(p.col);
+          const idx = this.pvzPlants.findIndex((pl) => pl.row === row && pl.col === col);
+          if (idx >= 0) {
+            const removed = this.pvzPlants[idx];
+            this.scene.remove(removed.rig.group);
+            this.disposeObjectResources(removed.rig.group);
+            this.pvzPlants.splice(idx, 1);
+          }
+        } else if (action === 'victory' && this.mode === 'plants_vs_roners' && this.phase === 'playing') {
+          this.finishPvzVictory();
+        }
+        this.pushHud(true);
+      }
+    } finally {
+      this.suppressMpEmit = false;
+    }
   }
 
   public setSettings(next: GameSettings): void {
@@ -2172,6 +2730,7 @@ export class ForestGameEngine {
   }
 
   public skipCutscene(): void {
+    const prevPhase = this.phase;
     if (this.phase === 'intro_cutscene') {
       this.beginActivePlay(true);
     } else if (this.phase === 'outro_cutscene') {
@@ -2198,6 +2757,14 @@ export class ForestGameEngine {
       this.finishAct4Victory();
     } else if (this.phase === 'act3_secret') {
       this.returnToMenu();
+    }
+    if (
+      !this.suppressMpEmit &&
+      this.partyRoom &&
+      prevPhase !== 'act3_secret' &&
+      !(prevPhase === 'act2_teaser' && this.isSecretPreviewOnly)
+    ) {
+      this.multiplayerClient?.sendGameEvent('skip_cutscene', { phase: prevPhase });
     }
   }
 
@@ -2387,6 +2954,12 @@ export class ForestGameEngine {
   }
 
   private startOutroCutscene(): void {
+    if (!this.suppressMpEmit && this.partyRoom && this.phase === 'playing') {
+      this.multiplayerClient?.sendGameEvent('collectible_claim', {
+        key: 'act1_outro',
+        kind: 'act1_outro',
+      });
+    }
     this.phase = 'outro_cutscene';
     this.applyAtmosphereSettings(0x071018, 0.028);
     this.cutsceneTimer = 0;
@@ -3076,6 +3649,18 @@ export class ForestGameEngine {
   }
 
   private startAct2OutroCutscene(): void {
+    if (!this.suppressMpEmit && this.partyRoom && this.phase === 'playing') {
+      this.multiplayerClient?.sendGameEvent('act2_sync', {
+        action: 'outro',
+        noodlesSeasoned: this.noodlesSeasoned,
+        noodlesPacked: this.noodlesPacked,
+        fnafMivinasTotal: this.fnafMivinasTotal,
+        fnafBatch: this.fnafBatch,
+        boxesFound: this.boxesFound,
+        act2Stage: this.act2Stage,
+        hasCorridorKey: this.hasCorridorKey,
+      });
+    }
     this.phase = 'act2_outro_cutscene';
     this.cutsceneTimer = 0;
     this.cutsceneStage = -1;
@@ -4217,6 +4802,18 @@ export class ForestGameEngine {
         this.eventBannerTimer = 3.2;
         this.pushHud(true);
       } else if (this.hasCorridorKey) {
+        if (!this.suppressMpEmit && this.partyRoom) {
+          this.multiplayerClient?.sendGameEvent('act2_sync', {
+            action: 'door_cutscene',
+            noodlesSeasoned: this.noodlesSeasoned,
+            noodlesPacked: this.noodlesPacked,
+            fnafMivinasTotal: this.fnafMivinasTotal,
+            fnafBatch: this.fnafBatch,
+            boxesFound: this.boxesFound,
+            act2Stage: this.act2Stage,
+            hasCorridorKey: true,
+          });
+        }
         this.startAct2DoorCutscene();
       } else {
         this.audio.playBrickReturn();
@@ -4348,6 +4945,18 @@ export class ForestGameEngine {
           this.eventBannerTimer = 6.5;
         }
       }
+      if (!this.suppressMpEmit && this.partyRoom) {
+        this.multiplayerClient?.sendGameEvent('act2_sync', {
+          action: 'pack',
+          noodlesSeasoned: this.noodlesSeasoned,
+          noodlesPacked: this.noodlesPacked,
+          fnafMivinasTotal: this.fnafMivinasTotal,
+          fnafBatch: this.fnafBatch,
+          boxesFound: this.boxesFound,
+          act2Stage: this.act2Stage,
+          hasCorridorKey: this.hasCorridorKey,
+        });
+      }
       this.pushHud(true);
       return;
     }
@@ -4378,6 +4987,12 @@ export class ForestGameEngine {
           maxLife: 1.15,
           isGold: true,
         });
+        if (!this.suppressMpEmit && this.partyRoom) {
+          this.multiplayerClient?.sendGameEvent('act2_sync', {
+            action: 'box',
+            boxesFound: this.boxesFound,
+          });
+        }
         this.pushHud(true);
         return;
       }
@@ -4410,6 +5025,14 @@ export class ForestGameEngine {
           maxLife: 1.0,
           isGold: false,
         });
+        if (!this.suppressMpEmit && this.partyRoom) {
+          this.multiplayerClient?.sendGameEvent('act2_sync', {
+            action: 'season',
+            noodlesSeasoned: this.noodlesSeasoned,
+            act2Stage:
+              this.noodlesSeasoned >= ACT2_TARGET_MIVINAS ? 'packaging' : this.act2Stage,
+          });
+        }
         this.pushHud(true);
       }
     }
@@ -5428,6 +6051,18 @@ export class ForestGameEngine {
 
         this.scene.remove(m.mesh);
         this.mushrooms.splice(i, 1);
+        if (!this.suppressMpEmit && this.partyRoom) {
+          const claimKey = isStory
+            ? `mush_${m.id}`
+            : `arena_mush_${m.id}_${Math.round(this.elapsedPlaying * 10)}`;
+          this.multiplayerClient?.sendGameEvent('collectible_claim', {
+            key: claimKey,
+            kind: 'mushroom',
+            id: m.id,
+            gained,
+            isGolden: m.isGolden,
+          });
+        }
         if (!isStory) {
           this.spawnArenaMushroom(true);
         } else if (this.mushroomsCollected >= STORY_TARGET_MUSHROOMS) {
@@ -5468,6 +6103,13 @@ export class ForestGameEngine {
           this.audio.playBatteryPickup();
           this.scene.remove(b.mesh);
           this.batteries.splice(i, 1);
+          if (!this.suppressMpEmit && this.partyRoom) {
+            this.multiplayerClient?.sendGameEvent('collectible_claim', {
+              key: `bat_${b.id}`,
+              kind: 'battery',
+              id: b.id,
+            });
+          }
         }
       }
 
@@ -5861,6 +6503,9 @@ export class ForestGameEngine {
     this.act3Night = 1;
     this.act3DayClock = 0;
     this.act3FireFuel = 80;
+    if (this.settings.hardcoreMode) {
+      this.hardcoreTimeLeft = HARDCORE_DURATION_SECONDS;
+    }
     this.act3LogsInHand = 0;
     this.act3MetalInHand = 0;
     this.act3CrusherMetal = 0;
@@ -6115,6 +6760,12 @@ export class ForestGameEngine {
       const logsUsed = this.act3LogsInHand;
       this.act3LogsInHand = 0;
       this.act3FireFuel = Math.min(100, this.act3FireFuel + logsUsed * 32);
+      if (this.settings.hardcoreMode) {
+        this.hardcoreTimeLeft = Math.min(
+          HARDCORE_DURATION_SECONDS,
+          this.hardcoreTimeLeft + logsUsed * 25
+        );
+      }
       this.audio.playFireLight();
       this.emitParticles(ACT3_CAMPFIRE_POS.x, 1.0, ACT3_CAMPFIRE_POS.z, 'gold');
       this.floatingTexts.push({
@@ -6127,6 +6778,12 @@ export class ForestGameEngine {
         maxLife: 1.1,
         isGold: true,
       });
+      if (!this.suppressMpEmit && this.partyRoom) {
+        this.multiplayerClient?.sendGameEvent('act3_sync', {
+          action: 'campfire',
+          act3FireFuel: this.act3FireFuel,
+        });
+      }
       this.pushHud(true);
       return;
     }
@@ -6216,6 +6873,13 @@ export class ForestGameEngine {
         }
         this.eventBannerTimer = 4.5;
       }
+      if (!this.suppressMpEmit && this.partyRoom) {
+        this.multiplayerClient?.sendGameEvent('act3_sync', {
+          action: 'crusher',
+          act3CrusherMetal: this.act3CrusherMetal,
+          act3BaseLevel: this.act3BaseLevel,
+        });
+      }
       this.pushHud(true);
       return;
     }
@@ -6263,6 +6927,9 @@ export class ForestGameEngine {
         this.act3Night = Math.min(nextMilestone, this.act3Night + actualSkip);
         this.act3DayClock = 0;
         this.act3BedCooldownNights = 1;
+        if (this.settings.hardcoreMode) {
+          this.hardcoreTimeLeft = HARDCORE_DURATION_SECONDS;
+        }
         this.checkAct3SurvivalAchievements();
 
         for (let i = 0; i < this.act3NightRonerStates.length; i++) {
@@ -6295,6 +6962,14 @@ export class ForestGameEngine {
             ? `Slept in Bed! Skipped ${actualSkip} ${actualSkip === 1 ? 'night' : 'days'} → Day ${this.act3Night}${nightTargetSuffix} (Bed CD: 1 night).`
             : `Поспали в кровати! Пропущено ${actualSkip} ${actualSkip === 1 ? 'ночь' : 'дня'} → День ${this.act3Night}${nightTargetSuffix} (КД кровати: 1 ночь).`;
           this.eventBannerTimer = 4.2;
+        }
+        if (!this.suppressMpEmit && this.partyRoom) {
+          this.multiplayerClient?.sendGameEvent('act3_sync', {
+            action: 'bed',
+            act3Night: this.act3Night,
+            act3BedCooldownNights: this.act3BedCooldownNights,
+            act3FireFuel: this.act3FireFuel,
+          });
         }
         this.pushHud(true);
       }
@@ -6414,6 +7089,9 @@ export class ForestGameEngine {
     this.sniperFireCooldown = 0;
     this.sniperRecoil = 0;
     this.sniperMuzzleTimer = 0;
+    if (this.settings.hardcoreMode) {
+      this.hardcoreTimeLeft = HARDCORE_DURATION_SECONDS;
+    }
     this.audio.playNightHorn();
 
     for (const st of this.act3NightRonerStates) {
@@ -6488,6 +7166,9 @@ export class ForestGameEngine {
         this.act3DayClock -= ACT3_CYCLE_SECONDS;
         this.act3Night += 1;
         this.act3BedCooldownNights = Math.max(0, this.act3BedCooldownNights - 1);
+        if (this.settings.hardcoreMode) {
+          this.hardcoreTimeLeft = HARDCORE_DURATION_SECONDS;
+        }
         this.checkAct3SurvivalAchievements();
         if (this.act3Night % ACT3_MAX_NIGHTS === 0) {
           this.triggerAct3Night30Climax();
@@ -6517,6 +7198,9 @@ export class ForestGameEngine {
       (!isSurvival && this.act3Night >= ACT3_MAX_NIGHTS) ||
       this.act3DayClock >= ACT3_DAY_DURATION;
     if (!prevIsNight && isNight && !this.act3HasSniper) {
+      if (this.settings.hardcoreMode) {
+        this.hardcoreTimeLeft = HARDCORE_DURATION_SECONDS;
+      }
       this.audio.playNightHorn();
       this.floatingTexts.push({
         id: this.nextFloatId++,
@@ -7146,6 +7830,9 @@ export class ForestGameEngine {
           this.act3DayClock = 0;
           this.act3FireFuel = 100;
           this.act3Hp = this.act3MaxHp;
+          if (this.settings.hardcoreMode) {
+            this.hardcoreTimeLeft = HARDCORE_DURATION_SECONDS;
+          }
           this.checkAct3SurvivalAchievements();
           this.audio.playVictoryFanfare();
           this.emitParticles(this.playerX, 2.0, this.playerZ, 'gold');
@@ -7162,6 +7849,12 @@ export class ForestGameEngine {
   }
 
   private startAct3OutroCutscene(): void {
+    if (!this.suppressMpEmit && this.partyRoom && this.phase === 'playing') {
+      this.multiplayerClient?.sendGameEvent('act3_sync', {
+        action: 'outro',
+        act3BossHp: 0,
+      });
+    }
     this.phase = 'act3_outro_cutscene';
     this.cutsceneTimer = 0;
     this.cutsceneStage = -1;
@@ -7743,6 +8436,12 @@ export class ForestGameEngine {
         : 'ВОЛНА 7: БОСС САНЯ 67!!!!!! (HP 11488)!';
       this.eventBannerTimer = 6.0;
     }
+    if (!this.suppressMpEmit && this.partyRoom) {
+      this.multiplayerClient?.sendGameEvent('act4_sync', {
+        action: 'wave',
+        act4Wave: wave,
+      });
+    }
     this.pushHud(true);
   }
 
@@ -7797,6 +8496,12 @@ export class ForestGameEngine {
       ? 'Roner activated 2 Auto-Turrets! Kills were NOT spent!'
       : 'Roner поставил 2 Автоматических пулемёта! Килы не потратились!';
     this.eventBannerTimer = 3.5;
+    if (!this.suppressMpEmit && this.partyRoom) {
+      this.multiplayerClient?.sendGameEvent('act4_sync', {
+        action: 'turrets',
+        act4HasTurrets: true,
+      });
+    }
     this.pushHud(true);
   }
 
@@ -7817,6 +8522,11 @@ export class ForestGameEngine {
         this.chasers[1].bubbleTimer = 3.2;
         this.audio.playDialogueLine(line.speech, 1.0, line.hasCensorBeep);
         this.audio.playGunShot('pistol');
+        if (!this.suppressMpEmit && this.partyRoom) {
+          this.multiplayerClient?.sendGameEvent('act4_sync', {
+            action: 'start_battle',
+          });
+        }
         this.startAct4Wave(1);
         return;
       }
@@ -7915,6 +8625,12 @@ export class ForestGameEngine {
           ? '100 KILLS! Click Roner Auto-Turrets or press [E] at Roner!'
           : '100 КИЛОВ! Жми кнопку пулемётов или подойди к Roner [E]!';
         this.eventBannerTimer = 4.5;
+      }
+      if (!this.suppressMpEmit && this.partyRoom) {
+        this.multiplayerClient?.sendGameEvent('act4_sync', {
+          action: 'kill',
+          act4Kills: this.act4Kills,
+        });
       }
     }
   }
@@ -8589,6 +9305,12 @@ export class ForestGameEngine {
   }
 
   private startAct4OutroCutscene(): void {
+    if (!this.suppressMpEmit && this.partyRoom && this.phase === 'playing') {
+      this.multiplayerClient?.sendGameEvent('act4_sync', {
+        action: 'outro',
+        act4BossHp: 0,
+      });
+    }
     this.phase = 'act4_outro_cutscene';
     this.cutsceneTimer = 0;
     this.cutsceneStage = -1;
@@ -8906,6 +9628,12 @@ export class ForestGameEngine {
       const bdist = Math.hypot(bdx, bdz) || 1;
       boss.x += (bdx / bdist) * 2.2;
       boss.z += (bdz / bdist) * 2.2;
+      if (isAct3Sniper && !this.suppressMpEmit && this.partyRoom) {
+        this.multiplayerClient?.sendGameEvent('act3_sync', {
+          action: 'boss_hit',
+          act3BossHp: this.act3BossHp,
+        });
+      }
       if (this.act3BossHp <= 0) {
         boss.active = false;
         boss.rig.root.visible = false;
@@ -8930,6 +9658,12 @@ export class ForestGameEngine {
         this.achievements.totalClonesKilled += 1;
         const unlocked = evaluateStatAchievements(this.achievements);
         this.emitAchievementResult(unlocked);
+        if (!this.suppressMpEmit && this.partyRoom) {
+          this.multiplayerClient?.sendGameEvent('sniper_sync', {
+            clonesKilled: this.clonesKilled,
+            sniperWave: this.sniperWave,
+          });
+        }
       }
 
       this.emitParticles(bestClone.x, 1.9, bestClone.z, 'gold');
@@ -9117,11 +9851,45 @@ export class ForestGameEngine {
   }
 
   private triggerCaught(killer: ChaserEntity | SniperCloneEntity | Act4CloneEntity): void {
+    const killerId: ChaserId = 'id' in killer ? killer.id : 'roner';
+    const connectedMembers = this.partyRoom
+      ? this.partyRoom.members.filter((m) => m.connected)
+      : [];
+    const hasTeammates = connectedMembers.length >= 2;
+
+    if (this.partyRoom && hasTeammates && !this.suppressMpEmit) {
+      this.multiplayerDownedTimer = 5.0;
+      this.killerId = killerId;
+      this.killerName = killer.name;
+      this.isHidingInLocker = false;
+      this.hiddenLockerId = null;
+      this.isPrimaryFireHeld = false;
+      this.heldKeys.clear();
+      this.cameraShake = 0.55;
+      this.playerRig.root.visible = true;
+      this.audio.playPlayerHit();
+      this.multiplayerClient?.sendGameEvent('player_downed', {
+        killerId,
+        killerName: killer.name,
+        hardcoreBurnout: false,
+      });
+      this.pushHud(true);
+      return;
+    }
+
+    if (this.partyRoom && connectedMembers.length === 1 && !this.suppressMpEmit) {
+      this.multiplayerClient?.sendGameEvent('player_downed', {
+        killerId,
+        killerName: killer.name,
+        hardcoreBurnout: false,
+      });
+    }
+
     this.phase = 'caught';
     this.caughtTimer = 2.35;
     this.hitstopTimer = 0.07;
     this.cameraShake = 0.65;
-    this.killerId = 'id' in killer ? killer.id : 'roner';
+    this.killerId = killerId;
     this.killerName = killer.name;
     this.isHidingInLocker = false;
     this.hiddenLockerId = null;
@@ -9511,6 +10279,9 @@ export class ForestGameEngine {
   }
 
   private finishParkourVictory(): void {
+    if (!this.suppressMpEmit && this.partyRoom && this.phase === 'playing') {
+      this.multiplayerClient?.sendGameEvent('parkour_victory', {});
+    }
     this.phase = 'victory';
     this.cutsceneSubtitle = null;
     this.playerBubbleText = null;
@@ -9527,10 +10298,10 @@ export class ForestGameEngine {
     this.playerBubbleText = null;
     this.interactPrompt = null;
     this.clearPvzDynamicEntities();
-    this.pvzEnergy = 150;
+    this.pvzEnergy = 250;
     this.pvzWave = 1;
     this.pvzWaveToSpawn = PVZ_WAVE_COUNTS[0];
-    this.pvzWaveSpawnTimer = 2.0;
+    this.pvzWaveSpawnTimer = 2.4;
     this.pvzWavePauseTimer = 0;
     this.pvzSelectedPlant = 'peashooter';
     this.pvzHoveredRow = 2;
@@ -9619,6 +10390,14 @@ export class ForestGameEngine {
           maxLife: 0.9,
           isGold: true,
         });
+        if (!this.suppressMpEmit && this.partyRoom) {
+          this.multiplayerClient?.sendGameEvent('pvz_sync', {
+            action: 'shovel',
+            row,
+            col,
+            pvzEnergy: Math.floor(this.pvzEnergy),
+          });
+        }
         this.pushHud(true);
       }
       return;
@@ -9638,18 +10417,27 @@ export class ForestGameEngine {
     rig.group.position.set(pos.x, 0, pos.z);
     this.scene.add(rig.group);
 
-    const maxHp = this.pvzSelectedPlant === 'wallnut' ? 420 : 120;
+    const maxHp = this.pvzSelectedPlant === 'wallnut' ? 750 : 200;
     this.pvzPlants.push({
       row,
       col,
       kind: this.pvzSelectedPlant,
       hp: maxHp,
       maxHp,
-      cooldown: this.pvzSelectedPlant === 'sun' ? 4.2 : 0.45,
+      cooldown: this.pvzSelectedPlant === 'sun' ? 3.0 : 0.25,
       rig,
     });
     this.audio.playBoxPickup();
     this.emitParticles(pos.x, 0.8, pos.z, this.pvzSelectedPlant === 'sun' ? 'gold' : 'green');
+    if (!this.suppressMpEmit && this.partyRoom) {
+      this.multiplayerClient?.sendGameEvent('pvz_sync', {
+        action: 'plant',
+        row,
+        col,
+        kind: this.pvzSelectedPlant,
+        pvzEnergy: Math.floor(this.pvzEnergy),
+      });
+    }
     this.pushHud(true);
   }
 
@@ -9661,7 +10449,7 @@ export class ForestGameEngine {
     }
 
     // Passive Sun trickle
-    this.pvzEnergy += dt * 4.5;
+    this.pvzEnergy += dt * 8.0;
 
     // Player movement on the lawn (for WASD + E play)
     let inX = this.virtualMoveX;
@@ -9735,12 +10523,12 @@ export class ForestGameEngine {
       if (p.kind === 'sun') {
         p.rig.headPivot.rotation.x = elapsed * 1.6;
         if (p.cooldown <= 0) {
-          p.cooldown = 5.0;
-          this.pvzEnergy += 25;
+          p.cooldown = 3.6;
+          this.pvzEnergy += 35;
           this.emitParticles(pos.x, 1.3, pos.z, 'gold');
           this.floatingTexts.push({
             id: this.nextFloatId++,
-            text: '+25 ☀',
+            text: '+35 ☀',
             worldX: pos.x,
             worldY: 1.7,
             worldZ: pos.z,
@@ -9765,7 +10553,7 @@ export class ForestGameEngine {
           }
         }
         if (hasTargetInLane && p.cooldown <= 0) {
-          p.cooldown = p.kind === 'repeater' ? 1.05 : 1.35;
+          p.cooldown = p.kind === 'repeater' ? 0.85 : 0.95;
           this.audio.playTurretShot();
           const offsets = p.kind === 'repeater' ? [0.75, 1.35] : [0.85];
           for (const ox of offsets) {
@@ -9777,7 +10565,7 @@ export class ForestGameEngine {
               row: p.row,
               x: pos.x + ox,
               z: pos.z,
-              dmg: p.kind === 'repeater' ? 26 : 28,
+              dmg: p.kind === 'repeater' ? 35 : 40,
               active: true,
             });
           }
@@ -9805,6 +10593,17 @@ export class ForestGameEngine {
               c4.deadTimer = 0.65;
               c4.currentBubbleText = 'X_X';
               c4.bubbleTimer = 0.65;
+              this.pvzEnergy += 20;
+              this.floatingTexts.push({
+                id: this.nextFloatId++,
+                text: '+20 ☀',
+                worldX: c4.x,
+                worldY: 1.7,
+                worldZ: c4.z,
+                life: 0.9,
+                maxLife: 0.9,
+                isGold: true,
+              });
               this.audio.playPickup(false);
             }
             break;
@@ -9832,10 +10631,10 @@ export class ForestGameEngine {
           c4.active = true;
           c4.x = PVZ_SPAWN_X + Math.random() * 1.4;
           c4.z = pos.z;
-          c4.maxHp = 85 + (this.pvzWave - 1) * 32;
+          c4.maxHp = 60 + (this.pvzWave - 1) * 18;
           c4.hp = c4.maxHp;
           c4.deadTimer = 0;
-          c4.speed = 2.0 + (this.pvzWave - 1) * 0.25;
+          c4.speed = 1.45 + (this.pvzWave - 1) * 0.15;
           c4.yaw = -Math.PI / 2;
           c4.currentBubbleText = null;
           c4.bubbleTimer = 0;
@@ -9845,7 +10644,7 @@ export class ForestGameEngine {
           c4.rig.bodyPivot.rotation.x = 0;
           c4.rig.bodyPivot.position.y = 0;
           this.pvzWaveToSpawn -= 1;
-          this.pvzWaveSpawnTimer = Math.max(1.0, 2.8 - this.pvzWave * 0.35);
+          this.pvzWaveSpawnTimer = Math.max(1.8, 3.4 - this.pvzWave * 0.3);
         }
       }
     }
@@ -9885,7 +10684,7 @@ export class ForestGameEngine {
 
       if (blockingIdx >= 0) {
         const plant = this.pvzPlants[blockingIdx];
-        plant.hp -= 38 * spdMult * dt;
+        plant.hp -= 20 * spdMult * dt;
         animateRobloxCharacter(c4.rig, 0.25, dt, elapsed, false, false, true);
         c4.rig.leftArm.rotation.x = -1.4 + Math.sin(elapsed * 12) * 0.45;
         c4.rig.rightArm.rotation.x = -1.4 - Math.sin(elapsed * 12) * 0.45;
@@ -9938,6 +10737,9 @@ export class ForestGameEngine {
   }
 
   private finishPvzVictory(): void {
+    if (!this.suppressMpEmit && this.partyRoom && this.phase === 'playing') {
+      this.multiplayerClient?.sendGameEvent('pvz_sync', { action: 'victory' });
+    }
     this.phase = 'victory';
     this.cutsceneSubtitle = null;
     this.playerBubbleText = null;
@@ -10589,6 +11391,28 @@ export class ForestGameEngine {
         });
       }
     }
+    // Project remote party teammates speech bubbles
+    for (const remote of this.remotePlayers.values()) {
+      if (!remote.rig.root.visible || !remote.bubbleText) continue;
+      const pos = remote.rig.root.position;
+      _projVec.set(pos.x, pos.y + 3.45, pos.z);
+      _projVec.project(this.camera);
+      if (_projVec.z > 1) continue;
+      const sx = ((_projVec.x + 1) / 2) * w;
+      const sy = ((-_projVec.y + 1) / 2) * h;
+      const dist = _vec3.set(pos.x, pos.y, pos.z).distanceTo(this.camera.position);
+      bubbles.push({
+        id: `remote-${remote.id}-${remote.bubbleText}`,
+        speaker: remote.name,
+        speakerId: 'nikita',
+        text: remote.bubbleText,
+        screenX: THREE.MathUtils.clamp(sx, 110, w - 110),
+        screenY: THREE.MathUtils.clamp(sy, 72, h - 85),
+        visible: true,
+        isScream: false,
+        scale: THREE.MathUtils.clamp(1.15 - dist * 0.015, 0.78, 1.08),
+      });
+    }
     this.callbacks.onBubblesUpdate(bubbles);
 
     const projectedFloats: FloatingPickupText[] = [];
@@ -10828,6 +11652,15 @@ export class ForestGameEngine {
       sniperMaxHp: this.sniperMaxHp,
       sniperCooldownRatio: THREE.MathUtils.clamp(this.sniperFireCooldown / 0.42, 0, 1),
       bestSniperKills: this.bestSniperKills,
+      partyCode: this.partyRoom?.code ?? null,
+      isPartyHost: Boolean(
+        this.partyRoom && this.partyMyId && this.partyRoom.hostId === this.partyMyId
+      ),
+      partyMembers: this.partyRoom?.members ?? [],
+      multiplayerDownedTimer:
+        this.multiplayerDownedTimer !== null
+          ? Math.max(1, Math.ceil(this.multiplayerDownedTimer))
+          : null,
     });
   }
 
@@ -10894,6 +11727,13 @@ export class ForestGameEngine {
         if (this.settings.hardcoreMode) {
           this.hardcoreTimeLeft = Math.max(0, this.hardcoreTimeLeft - dt);
           if (this.hardcoreTimeLeft <= 0) {
+            if (this.partyRoom && !this.suppressMpEmit) {
+              this.multiplayerClient?.sendGameEvent('player_downed', {
+                killerId: 'roner',
+                killerName: 'HARDCORE FIRE',
+                hardcoreBurnout: true,
+              });
+            }
             this.hardcoreBurnout = true;
             this.phase = 'gameover';
             this.killerName = 'HARDCORE FIRE';
@@ -10908,7 +11748,43 @@ export class ForestGameEngine {
           }
         }
         if (this.phase === 'playing') {
-          this.updatePlaying(dt, elapsed);
+          if (this.multiplayerDownedTimer !== null) {
+            this.multiplayerDownedTimer -= dt;
+            animateRobloxCharacter(this.playerRig, 0, dt, elapsed, false, true, false);
+            if (this.multiplayerDownedTimer <= 0) {
+              this.multiplayerDownedTimer = null;
+              let rx = 0;
+              let ry = 0;
+              let rz = 0;
+              let foundMate = false;
+              for (const remote of this.remotePlayers.values()) {
+                if (remote.alive && remote.hasState) {
+                  rx = remote.x + 1.5;
+                  ry = remote.y;
+                  rz = remote.z + 1.5;
+                  foundMate = true;
+                  break;
+                }
+              }
+              if (foundMate) {
+                this.playerX = rx;
+                this.playerY = ry;
+                this.playerZ = rz;
+              }
+              this.act3Hp = this.act3MaxHp;
+              this.act4Hp = this.act4MaxHp;
+              this.sniperHp = this.sniperMaxHp;
+              this.act3InvulnTimer = 2.5;
+              this.act4InvulnTimer = 2.5;
+              this.sniperInvulnTimer = 2.5;
+              this.multiplayerClient?.sendGameEvent('player_revived', {});
+              this.audio.playPickup(true);
+              this.emitParticles(this.playerX, this.playerY + 1.2, this.playerZ, 'gold');
+              this.pushHud(true);
+            }
+          } else {
+            this.updatePlaying(dt, elapsed);
+          }
         }
       } else if (this.phase === 'caught') {
         this.updateCaught(dt, elapsed);
@@ -10934,6 +11810,73 @@ export class ForestGameEngine {
             b.x += 1.48 * dt;
             if (b.x > CONVEYOR_END_X) b.x = CONVEYOR_START_X;
             b.rig.group.position.x = b.x;
+          }
+        }
+      }
+
+      // Sync multiplayer state & animate remote party teammates
+      if (this.partyRoom && this.multiplayerClient) {
+        const nowMs = performance.now();
+        if (nowMs - this.lastStateSentAt >= 55) {
+          this.lastStateSentAt = nowMs;
+          const isMovingNow = hasMove && this.phase === 'playing' && this.multiplayerDownedTimer === null;
+          const isSprintingNow =
+            isMovingNow &&
+            (this.heldKeys.has('ShiftLeft') ||
+              this.heldKeys.has('ShiftRight') ||
+              this.virtualSprint) &&
+            this.stamina > 2;
+          this.multiplayerClient.sendPlayerState({
+            x: this.playerX,
+            y: this.playerY,
+            z: this.playerZ,
+            yaw: this.playerYaw,
+            speedNorm: isMovingNow ? (isSprintingNow ? 1.35 : 0.9) : 0,
+            isAirborne: !this.isGrounded,
+            isDead: this.multiplayerDownedTimer !== null || this.phase === 'caught' || this.phase === 'gameover',
+            flashlightOn: this.flashlightOn,
+            alive: this.multiplayerDownedTimer === null && this.phase !== 'caught' && this.phase !== 'gameover',
+            activeWeapon: this.act4ActiveWeapon,
+          });
+        }
+
+        const showRemotes =
+          this.phase !== 'title' &&
+          this.phase !== 'act3_secret' &&
+          !(this.phase === 'act2_teaser' && this.isSecretPreviewOnly);
+        for (const remote of this.remotePlayers.values()) {
+          const memberConnected = this.partyRoom.members.some(
+            (m) => m.id === remote.id && m.connected
+          );
+          if (!showRemotes || !memberConnected || !remote.hasState) {
+            remote.rig.root.visible = false;
+            continue;
+          }
+          remote.rig.root.visible = true;
+          remote.x = THREE.MathUtils.damp(remote.x, remote.targetX, 14, dt);
+          remote.y = THREE.MathUtils.damp(remote.y, remote.targetY, 14, dt);
+          remote.z = THREE.MathUtils.damp(remote.z, remote.targetZ, 14, dt);
+          let yDiff = remote.targetYaw - remote.yaw;
+          while (yDiff > Math.PI) yDiff -= Math.PI * 2;
+          while (yDiff < -Math.PI) yDiff += Math.PI * 2;
+          remote.yaw += yDiff * Math.min(1, dt * 14);
+
+          remote.rig.root.position.set(remote.x, remote.y, remote.z);
+          remote.rig.root.rotation.y = remote.yaw;
+          remote.flashlight.group.visible = remote.flashlightOn && !remote.isDead;
+          remote.flashlight.beamCone.visible = remote.flashlightOn && !remote.isDead;
+          animateRobloxCharacter(
+            remote.rig,
+            remote.speedNorm,
+            dt,
+            elapsed,
+            remote.isAirborne,
+            remote.isDead,
+            false
+          );
+          if (remote.bubbleTimer > 0) {
+            remote.bubbleTimer -= dt;
+            if (remote.bubbleTimer <= 0) remote.bubbleText = null;
           }
         }
       }
@@ -11035,7 +11978,17 @@ export class ForestGameEngine {
         this.phase === 'gameover' ||
         this.phase === 'victory'
       ) {
-        this.startGame();
+        if (this.partyRoom) {
+          if (this.partyMyId === this.partyRoom.hostId) {
+            this.multiplayerClient?.launchParty(
+              this.mode,
+              this.settings.hardcoreMode,
+              this.settings.voidMode
+            );
+          }
+        } else {
+          this.startGame();
+        }
       }
     }
     if (e.code === 'Enter' && !e.repeat) {
@@ -11058,7 +12011,17 @@ export class ForestGameEngine {
         this.phase === 'gameover' ||
         this.phase === 'victory'
       ) {
-        this.startGame();
+        if (this.partyRoom) {
+          if (this.partyMyId === this.partyRoom.hostId) {
+            this.multiplayerClient?.launchParty(
+              this.mode,
+              this.settings.hardcoreMode,
+              this.settings.voidMode
+            );
+          }
+        } else {
+          this.startGame();
+        }
       }
     }
     if ((e.code === 'Escape' || e.code === 'KeyP') && !e.repeat) {
@@ -11324,6 +12287,11 @@ export class ForestGameEngine {
     this.clearPvzDynamicEntities();
     this.clearAct3Collectibles();
     this.clearFactoryDynamicEntities();
+    for (const remote of this.remotePlayers.values()) {
+      this.scene.remove(remote.rig.root);
+      this.disposeObjectResources(remote.rig.root);
+    }
+    this.remotePlayers.clear();
     this.scene.traverse((obj) => {
       if ((obj as THREE.Mesh).isMesh) {
         const m = obj as THREE.Mesh;

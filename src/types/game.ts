@@ -125,6 +125,46 @@ export interface FloatingPickupText {
   alpha: number;
 }
 
+export type HeroPartOwner = 'nikita' | 'roner' | 'sasha';
+
+export interface CharacterCustomization {
+  head: HeroPartOwner;
+  hat: HeroPartOwner | 'none';
+  torso: HeroPartOwner;
+  wings: HeroPartOwner;
+  legs: HeroPartOwner;
+}
+
+export interface PartyMember {
+  id: string;
+  name: string;
+  isHost: boolean;
+  ready: boolean;
+  connected: boolean;
+  alive: boolean;
+  customization: CharacterCustomization;
+  x?: number;
+  y?: number;
+  z?: number;
+  yaw?: number;
+  speedNorm?: number;
+  isAirborne?: boolean;
+  isDead?: boolean;
+  flashlightOn?: boolean;
+  activeWeapon?: Act4WeaponId;
+}
+
+export interface PartyRoomState {
+  code: string;
+  hostId: string;
+  mode: GameMode;
+  hardcoreMode: boolean;
+  voidMode: boolean;
+  status: 'lobby' | 'playing';
+  seed: number;
+  members: PartyMember[];
+}
+
 export interface HudSnapshot {
   phase: GamePhase;
   mode: GameMode;
@@ -219,4 +259,9 @@ export interface HudSnapshot {
   pvzHoveredRow: number | null;
   pvzHoveredCol: number | null;
   pvzEnemiesRemaining: number;
+  // Multiplayer state
+  partyCode: string | null;
+  isPartyHost: boolean;
+  partyMembers: PartyMember[];
+  multiplayerDownedTimer: number | null;
 }
